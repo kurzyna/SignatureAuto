@@ -53,73 +53,29 @@ async function ensureComposeReady(maxTries = 30, delayMs = 200) {
 
 // ====== UI helpers (tylko monit o logowanie) ======
 function get_command_id() {
-  // UPEWNIJ SIĘ: te ID muszą być identyczne jak w manifeście (Command Surface)
-  return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
-    ? "MRCS_TpBtn1"
-    : "MRCS_TpBtn0";
-}
-
-function clearSignInNotice() {
-  try {
-    Office.context.mailbox.item.notificationMessages.removeAsync("16c028c6_sign_in_notification", () => {});
-  } catch {}
-  try {
-    Office.context.mailbox.item.notificationMessages.removeAsync("sign_in_needed", () => {});
-  } catch {}
-}
-
-function notifyUserToSignIn() {
-  const item = Office.context.mailbox.item;
-  if (!item?.notificationMessages) return;
-
-  const key = "16c028c6_sign_in_notification"; // Twój stary klucz
-  const messageText = "Zaloguj się w panelu dodatku, aby automatycznie wstawić stopkę e-mail.";
-
-  // Najpierw usuń ewentualny istniejący komunikat o tym kluczu
-  try {
-    item.notificationMessages.removeAsync(key, () => {});
-  } catch {}
-
-  // 1) Klasyczny wariant, którego używałeś — addAsync + insightMessage
-  try {
-    item.notificationMessages.addAsync(
-      key,
-      {
-        type: "insightMessage",
-        message: messageText,
-        icon: "Icon.16x16",
-        actions: [
-          {
-            actionType: "showTaskPane",
-            actionText: "Zaloguj się",
-            commandId: get_command_id(),
-            contextData: "{}", // zamiast "{''}"
-          },
-        ],
-      },
-      (res) => {
-        // 2) Automatyczny fallback (gdy insight nie jest obsługiwany)
-        if (res?.status !== Office.AsyncResultStatus.Succeeded) {
-          try {
-            item.notificationMessages.replaceAsync(
-              "sign_in_needed",
-              { type: "informationalMessage", message: messageText, icon: "Icon.16x16", persistent: false },
-              () => {}
-            );
-          } catch {}
-        }
-      }
-    );
-  } catch {
-    // Awaryjnie — od razu zwykły baner
-    try {
-      item.notificationMessages.replaceAsync(
-        "sign_in_needed",
-        { type: "informationalMessage", message: messageText, icon: "Icon.16x16", persistent: false },
-        () => {}
-      );
-    } catch {}
+  if (Office.context.mailbox.item.itemType == "appointment") {
+    return "MRCS_TpBtn1";
   }
+  return "MRCS_TpBtn0";
+}
+
+/**
+ * Adds a notification to the email item requesting the user to sign in using the task pane.
+ */
+function notifyUserToSignIn() {
+  Office.context.mailbox.item.notificationMessages.addAsync("16c028c6_sign_in_notification", {
+    type: "insightMessage",
+    message: "Zaloguj się w panelu dodatku, aby automatycznie wstawić stopkę e-mail.",
+    icon: "Icon.16x16",
+    actions: [
+      {
+        actionType: "showTaskPane",
+        actionText: "Zaloguj",
+        commandId: get_command_id(),
+        contextData: "{''}",
+      },
+    ],
+  });
 }
 
 // ====== Odczyty z cache ======
@@ -232,7 +188,6 @@ async function insertHtmlSignatureWithRetry(html, event) {
       await insertViaBodySet();
       d("body.setAsync succeeded");
     }
-    clearSignInNotice(); // sukces → usuń ewentualny wcześniejszy monit
   } catch (e1) {
     d("1st insert attempt failed, retrying…", e1);
     await wait(300);
@@ -244,7 +199,6 @@ async function insertHtmlSignatureWithRetry(html, event) {
         await insertViaBodySet();
         d("body.setAsync succeeded (retry)");
       }
-      clearSignInNotice();
     } catch (e2) {
       d("2nd insert attempt failed", e2);
     }
@@ -262,9 +216,9 @@ async function setSignature(event) {
     });
 
     // 1) CACHE FIRST
-    let cachedHtml = await getSignatureHtmlPreferSession();
+    const cachedHtml = await getSignatureHtmlPreferSession();
     if (cachedHtml) {
-      await insertHtmlSignatureWithRetry(cachedHtml, event);
+      await insertHtmlSignatureWithRetry(cachedHtml, event); // kończy event wewnątrz
       return;
     }
 
@@ -272,30 +226,36 @@ async function setSignature(event) {
     try {
       const profile = await getProfileFromGraph();
       const freshHtml = buildSignatureHtml(profile);
-      await insertHtmlSignatureWithRetry(freshHtml, event);
+      await insertHtmlSignatureWithRetry(freshHtml, event); // kończy event wewnątrz
       return;
     } catch (silentErr) {
       d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
     }
 
-    // 3) Fallback: z user_info (jeśli taskpane je zapisał)
+    // 3) Fallback: z user_info
     const userInfo = getRoamingUserInfo();
     if (userInfo) {
       const built = buildSignatureHtml(userInfo);
       if (built) {
-        await insertHtmlSignatureWithRetry(built, event);
+        await insertHtmlSignatureWithRetry(built, event); // kończy event wewnątrz
         return;
       }
     }
 
-    // 4) Nic nie mamy → pokaż monit o zalogowanie
+    // 4) Nic nie mamy → pokaż monit o zalogowanie (log TU, a nie w catch)
+    d("no data -> notifyUserToSignIn()");
+    // jeśli masz wersję „robust”, to lepiej:
+    // await notifyUserToSignInRobust();
     notifyUserToSignIn();
     event.completed();
+    return;
   } catch (e) {
-    console.log("[EVT] no data -> notifyUserToSignIn()");
     d("Event handler failed (outer catch)", e);
+    // awaryjnie pokaż monit, gdy posypało się wcześniej
+    // await notifyUserToSignInRobust();
     notifyUserToSignIn();
     event.completed();
+    return;
   }
 }
 
