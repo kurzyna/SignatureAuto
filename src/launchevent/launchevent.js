@@ -13,13 +13,15 @@ const d = (msg, obj) => {
   if (obj !== undefined) console.log(`${LOG_PREFIX} ${ts} ${msg}`, obj);
   else console.log(`${LOG_PREFIX} ${ts} ${msg}`);
 };
-function showPath(tag) {
+
+// Mały baner z informacją, którą ścieżką poszło
+function showPath(tag, extra = "") {
   try {
     Office.context.mailbox.item.notificationMessages.replaceAsync(
       "sig_path",
       {
         type: "informationalMessage",
-        message: `Signature path: ${tag}`,
+        message: `Signature path: ${tag}${extra ? ` (${extra})` : ""}`,
         icon: "Icon.16x16",
         persistent: false,
       },
@@ -54,7 +56,6 @@ async function ensureComposeReady(maxTries = 20, delayMs = 200) {
   const item = Office?.context?.mailbox?.item;
   for (let i = 0; i < maxTries; i++) {
     if (item?.body) {
-      // Spróbuj wywołać lekki call, który przejdzie tylko, gdy editor jest gotowy
       try {
         await new Promise((resolve) => item.body.getTypeAsync(() => resolve()));
         d("Compose editor ready.");
@@ -85,7 +86,7 @@ function notifyUserToSignIn() {
 
 // ====== Roaming/session storage helpers ======
 async function getSignatureHtmlPreferSession() {
-  // 1) Classic/Windows – sessionData (natychmiastowy mostek)
+  // jeśli kiedyś sessionData będzie dostępne – najpierw spróbujmy tam
   if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.getAsync) {
     const sessionHtml = await new Promise((resolve) =>
       Office.sessionData.getAsync("signature_html", (r) => resolve(r?.value || null))
@@ -93,8 +94,6 @@ async function getSignatureHtmlPreferSession() {
     d("sessionData signature_html", { found: !!sessionHtml, len: sessionHtml?.length || 0 });
     if (sessionHtml) return sessionHtml;
   }
-
-  // 2) Standard – roamingSettings
   const rsHtml = Office.context.roamingSettings.get("signature_html") || null;
   d("roamingSettings signature_html", { found: !!rsHtml, len: rsHtml?.length || 0 });
   return rsHtml;
@@ -162,32 +161,58 @@ async function getProfileFromGraph() {
   };
 }
 
-// ====== Insert signature into item (with readiness) ======
-async function insertHtmlSignature(html, event) {
-  await ensureComposeReady(); // <<< KLUCZOWE DLA CLASSIC
+// ====== Insert signature into item (with readiness + retry) ======
+async function insertHtmlSignatureWithRetry(html, event) {
+  await ensureComposeReady(); // KLUCZOWE na Classic
+
   const item = Office.context.mailbox.item;
   const isMessage = item.itemType === Office.MailboxEnums.ItemType.Message;
-
   const canUseSetSignature =
     typeof Office?.context?.requirements?.isSetSupported === "function" &&
     Office.context.requirements.isSetSupported("Mailbox", "1.10") &&
     item.body?.setSignatureAsync;
 
-  d("insertHtmlSignature: method", { isMessage, canUseSetSignature });
+  d("insertHtmlSignatureWithRetry: method", { isMessage, canUseSetSignature });
 
-  if (isMessage && canUseSetSignature) {
-    return item.body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html, asyncContext: event }, (res) => {
-      if (res.status === Office.AsyncResultStatus.Succeeded) {
-        d("setSignatureAsync succeeded");
-        event.completed();
-      } else {
-        d("setSignatureAsync failed -> fallback to setAsync", res.error);
-        item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
-      }
+  const insertViaSignatureApi = () =>
+    new Promise((resolve, reject) => {
+      item.body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html, asyncContext: event }, (res) =>
+        res.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(res.error)
+      );
     });
-  }
 
-  item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
+  const insertViaBodySet = () =>
+    new Promise((resolve, reject) => {
+      item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, (res) =>
+        res.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(res.error)
+      );
+    });
+
+  try {
+    if (isMessage && canUseSetSignature) {
+      await insertViaSignatureApi();
+      d("setSignatureAsync succeeded");
+    } else {
+      await insertViaBodySet();
+      d("body.setAsync succeeded");
+    }
+  } catch (e1) {
+    d("1st insert attempt failed, retrying once…", e1);
+    await wait(250); // krótka przerwa i ponów
+    try {
+      if (isMessage && canUseSetSignature) {
+        await insertViaSignatureApi();
+        d("setSignatureAsync succeeded (retry)");
+      } else {
+        await insertViaBodySet();
+        d("body.setAsync succeeded (retry)");
+      }
+    } catch (e2) {
+      d("2nd insert attempt failed", e2);
+    }
+  } finally {
+    event.completed();
+  }
 }
 
 // ====== Main event handler ======
@@ -200,41 +225,43 @@ async function setSignature(event) {
 
     // 1) Preferred path: silent + Graph
     try {
-      d("Trying silent Graph path...");
+      d("Trying silent Graph path…");
       const profile = await getProfileFromGraph();
       d("Silent Graph OK. Profile", profile);
 
       const signatureHtml = buildSignatureHtml(profile);
       d("Built signatureHtml from Graph", { len: signatureHtml?.length || 0 });
 
-      showPath("silent-graph");
-      await insertHtmlSignature(signatureHtml, event);
+      showPath("silent-graph", `len=${signatureHtml?.length || 0}`);
+      await insertHtmlSignatureWithRetry(signatureHtml, event);
       return;
     } catch (silentErr) {
       d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
-      // go to fallback
+      // przechodzimy do cache
     }
 
-    // 2) Fallback: pre-saved HTML (sessionData -> roamingSettings)
+    // 2) Cache: sessionData (jeśli kiedyś będzie) -> roamingSettings
     let html = await getSignatureHtmlPreferSession();
-
-    // 2a) If missing, try to build from user_info
-    if (!html) {
-      const userInfo = getRoamingUserInfo();
-      d("Read user_info", { found: !!userInfo });
-      if (userInfo) {
-        html = buildSignatureHtml(userInfo);
-        d("Built signatureHtml from user_info", { len: html?.length || 0 });
-      }
-    }
-
     if (html) {
-      showPath("cached-html");
-      await insertHtmlSignature(html, event);
+      showPath("cached-html", `len=${html.length}`);
+      await insertHtmlSignatureWithRetry(html, event);
       return;
     }
 
-    // 3) No data
+    // 3) Ostateczny fallback: z user_info (również zapisane przez taskpane)
+    const userInfo = getRoamingUserInfo();
+    d("Read user_info", { found: !!userInfo });
+    if (userInfo) {
+      const built = buildSignatureHtml(userInfo);
+      d("Built signatureHtml from user_info", { len: built?.length || 0 });
+      if (built) {
+        showPath("built-from-user-info", `len=${built.length}`);
+        await insertHtmlSignatureWithRetry(built, event);
+        return;
+      }
+    }
+
+    // 4) Brak danych
     d("No HTML and no user_info. Asking user to sign in.");
     showPath("no-data");
     notifyUserToSignIn();
