@@ -45,6 +45,29 @@ async function initializePCA() {
   }
 }
 
+// ====== Wait until compose editor is ready (Classic needs this) ======
+function wait(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function ensureComposeReady(maxTries = 20, delayMs = 200) {
+  const item = Office?.context?.mailbox?.item;
+  for (let i = 0; i < maxTries; i++) {
+    if (item?.body) {
+      // Spróbuj wywołać lekki call, który przejdzie tylko, gdy editor jest gotowy
+      try {
+        await new Promise((resolve) => item.body.getTypeAsync(() => resolve()));
+        d("Compose editor ready.");
+        return;
+      } catch {
+        /* retry */
+      }
+    }
+    await wait(delayMs);
+  }
+  throw new Error("Compose body is not ready.");
+}
+
 // ====== UI helpers ======
 function getCommandId() {
   return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
@@ -139,8 +162,9 @@ async function getProfileFromGraph() {
   };
 }
 
-// ====== Insert signature into item ======
-function setSignatureHtmlIntoItem(html, event) {
+// ====== Insert signature into item (with readiness) ======
+async function insertHtmlSignature(html, event) {
+  await ensureComposeReady(); // <<< KLUCZOWE DLA CLASSIC
   const item = Office.context.mailbox.item;
   const isMessage = item.itemType === Office.MailboxEnums.ItemType.Message;
 
@@ -149,10 +173,10 @@ function setSignatureHtmlIntoItem(html, event) {
     Office.context.requirements.isSetSupported("Mailbox", "1.10") &&
     item.body?.setSignatureAsync;
 
-  d("setSignatureHtmlIntoItem: method", { isMessage, canUseSetSignature });
+  d("insertHtmlSignature: method", { isMessage, canUseSetSignature });
 
   if (isMessage && canUseSetSignature) {
-    item.body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html, asyncContext: event }, (res) => {
+    return item.body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html, asyncContext: event }, (res) => {
       if (res.status === Office.AsyncResultStatus.Succeeded) {
         d("setSignatureAsync succeeded");
         event.completed();
@@ -161,9 +185,9 @@ function setSignatureHtmlIntoItem(html, event) {
         item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
       }
     });
-  } else {
-    item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
   }
+
+  item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
 }
 
 // ====== Main event handler ======
@@ -184,7 +208,7 @@ async function setSignature(event) {
       d("Built signatureHtml from Graph", { len: signatureHtml?.length || 0 });
 
       showPath("silent-graph");
-      setSignatureHtmlIntoItem(signatureHtml, event);
+      await insertHtmlSignature(signatureHtml, event);
       return;
     } catch (silentErr) {
       d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
@@ -206,7 +230,7 @@ async function setSignature(event) {
 
     if (html) {
       showPath("cached-html");
-      setSignatureHtmlIntoItem(html, event);
+      await insertHtmlSignature(html, event);
       return;
     }
 

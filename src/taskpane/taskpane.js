@@ -147,10 +147,14 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
   try {
     d("Saving to roamingSettings...", { hasHtml: !!html, htmlLen: html?.length || 0, profile });
 
-    // convenience
-    localStorage.setItem("user_info", JSON.stringify(profile));
+    // convenience (niekrytyczne)
+    try {
+      localStorage.setItem("user_info", JSON.stringify(profile));
+    } catch (e) {
+      d("localStorage set error (non-fatal)", e);
+    }
 
-    // critical for event runtime
+    // kluczowe dla event-runtime
     Office.context.roamingSettings.set("user_info", JSON.stringify(profile));
     Office.context.roamingSettings.set("signature_html", html);
     Office.context.roamingSettings.set("override_olk_signature", disableClientSig ? "1" : "0");
@@ -159,7 +163,7 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
       Office.context.roamingSettings.saveAsync(async (res) => {
         d("roamingSettings.saveAsync", { status: res?.status, error: res?.error });
 
-        // read-back (potwierdzenie)
+        // potwierdzenie odczytem z roamingSettings
         try {
           const readBack = Office.context.roamingSettings.get("signature_html");
           d("roamingSettings read-back signature_html len", readBack?.length || 0);
@@ -167,18 +171,28 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
           d("roamingSettings read-back error", e);
         }
 
-        // sessionData bridge (Classic/Windows)
+        // DIAG: dostępność sessionData
+        console.log("[TP] platform:", Office.context.platform);
+        console.log("[TP] has sessionData:", !!Office.sessionData);
+        console.log("[TP] has setAsync:", !!(Office.sessionData && Office.sessionData.setAsync));
+        console.log("[TP] has getAsync:", !!(Office.sessionData && Office.sessionData.getAsync));
+
+        // mostek sessionData (Classic/Windows) — natychmiastowy cache dla launchevent
         try {
           if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.setAsync) {
             await new Promise((r) => Office.sessionData.setAsync("signature_html", html, () => r()));
             await new Promise((r) => Office.sessionData.setAsync("isAuthenticated", "1", () => r()));
-            d("sessionData set: signature_html + isAuthenticated=1");
+            console.log("[TP] sessionData set: signature_html + isAuthenticated=1");
+
+            // read-back z sessionData (potwierdzenie)
+            const back = await new Promise((r) => Office.sessionData.getAsync("signature_html", (x) => r(x?.value)));
+            console.log("[TP] sessionData read-back len:", back ? back.length : 0);
           }
         } catch (e) {
-          d("sessionData set error", e);
+          console.log("[TP] sessionData set/get error:", e);
         }
 
-        // lekki toast
+        // lekki toast (potwierdzenie w UI)
         try {
           Office.context.mailbox.item?.notificationMessages?.replaceAsync(
             "sig_saved",
@@ -196,10 +210,14 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
       });
     });
 
-    // Disable native client signature on current item (optional)
-    if (disableClientSig && Office.context.mailbox.item?.disableClientSignatureAsync) {
-      Office.context.mailbox.item.disableClientSignatureAsync(() => {});
-      d("Client signature disabled on current item.");
+    // opcjonalnie: wyłącz natywną stopkę klienta na bieżącym elemencie
+    try {
+      if (disableClientSig && Office.context.mailbox.item?.disableClientSignatureAsync) {
+        Office.context.mailbox.item.disableClientSignatureAsync(() => {});
+        d("Client signature disabled on current item.");
+      }
+    } catch (e) {
+      d("disableClientSignatureAsync error (non-fatal)", e);
     }
   } catch (e) {
     d("Error saving signature to storage", e);
