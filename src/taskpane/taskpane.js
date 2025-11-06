@@ -126,7 +126,7 @@ async function signInUser() {
   // 6) UI info
   if (itemSubject) {
     const name = profile.displayName || [profile.firstName, profile.lastName].filter(Boolean).join(" ");
-    itemSubject.innerHTML = `Jesteś zalogowany jako <b>${name}</b>.`;
+    itemSubject.innerHTML = `Jesteś zalogowany jako <b>${name}</b>.<br> Stopka została zapisana w pamięci dodatku.`;
   }
 
   // 7) Save to roamingSettings (+ ewentualny bridge do sessionData, jeśli dostępne)
@@ -192,18 +192,21 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
         }
 
         // lekkie potwierdzenie w UI
+        // zamiast wcześniejszego notificationMessages.replaceAsync(... informationalMessage ...)
         try {
           Office.context.mailbox.item?.notificationMessages?.replaceAsync(
             "sig_saved",
             {
               type: "insightMessage",
               message: "Podpis zapisany w pamięci dodatku.",
-              icon: "Icon.16x16",
-              persistent: false,
+              icon: "Icon.16x16", // ID z manifestu
+              actions: [], // brak przycisków – tylko info z ikoną
             },
             () => {}
           );
-        } catch {}
+        } catch {
+          /* no-op */
+        }
 
         resolve();
       });
