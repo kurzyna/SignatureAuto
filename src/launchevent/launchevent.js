@@ -53,29 +53,44 @@ async function ensureComposeReady(maxTries = 30, delayMs = 200) {
 
 // ====== UI helpers (tylko monit o logowanie) ======
 function get_command_id() {
-  if (Office.context.mailbox.item.itemType == "appointment") {
-    return "MRCS_TpBtn1";
-  }
-  return "MRCS_TpBtn0";
+  return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
+    ? "MRCS_TpBtn1"
+    : "MRCS_TpBtn0";
 }
 
-/**
- * Adds a notification to the email item requesting the user to sign in using the task pane.
- */
-function notifyUserToSignIn() {
-  Office.context.mailbox.item.notificationMessages.addAsync("16c028c6_sign_in_notification", {
-    type: "insightMessage",
-    message: "Zaloguj się w panelu dodatku, aby automatycznie wstawić stopkę e-mail.",
-    icon: "Icon.16x16",
-    actions: [
-      {
-        actionType: "showTaskPane",
-        actionText: "Zaloguj",
-        commandId: get_command_id(),
-        contextData: "{''}",
-      },
-    ],
-  });
+async function notifyUserToSignIn() {
+  // dopilnuj, że edytor compose już „wstał”
+  try {
+    await ensureComposeReady();
+  } catch {}
+
+  const item = Office?.context?.mailbox?.item;
+  if (!item?.notificationMessages) return;
+
+  const key = "sign_in_needed";
+  const msg = "Zaloguj się w panelu dodatku, aby automatycznie wstawić stopkę e-mail.";
+  const action = {
+    actionType: "showTaskPane",
+    actionText: "Zaloguj",
+    commandId: get_command_id(),
+    contextData: "{}", // poprawny JSON
+  };
+
+  // jeden insight na add-in → replaceAsync z jednym kluczem
+  item.notificationMessages.replaceAsync(
+    key,
+    { type: "insightMessage", message: msg, icon: "Icon.16x16", actions: [action] },
+    (res) => {
+      if (res?.status !== Office.AsyncResultStatus.Succeeded) {
+        // fallback — działa wszędzie (bez custom ikony w OWA)
+        item.notificationMessages.replaceAsync(
+          key,
+          { type: "informationalMessage", message: msg, icon: "Icon.16x16", persistent: false },
+          () => {}
+        );
+      }
+    }
+  );
 }
 
 // ====== Odczyty z cache ======
@@ -222,7 +237,7 @@ async function setSignature(event) {
       return;
     }
 
-    // 2) SSO silent → Graph → świeży HTML
+    // 2) Graph (silent) → świeży HTML
     try {
       const profile = await getProfileFromGraph();
       const freshHtml = buildSignatureHtml(profile);
@@ -232,7 +247,7 @@ async function setSignature(event) {
       d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
     }
 
-    // 3) Fallback: z user_info
+    // 3) Fallback: user_info (zapisane przez taskpane)
     const userInfo = getRoamingUserInfo();
     if (userInfo) {
       const built = buildSignatureHtml(userInfo);
@@ -242,18 +257,14 @@ async function setSignature(event) {
       }
     }
 
-    // 4) Nic nie mamy → pokaż monit o zalogowanie (log TU, a nie w catch)
+    // 4) NIC nie mamy → pokaż *twardy* monit i zakończ event
     d("no data -> notifyUserToSignIn()");
-    // jeśli masz wersję „robust”, to lepiej:
-    // await notifyUserToSignInRobust();
-    notifyUserToSignIn();
+    await notifyUserToSignIn(); // poczekaj aż spróbuje dodać notyfikację
     event.completed();
     return;
   } catch (e) {
     d("Event handler failed (outer catch)", e);
-    // awaryjnie pokaż monit, gdy posypało się wcześniej
-    // await notifyUserToSignInRobust();
-    notifyUserToSignIn();
+    await notifyUserToSignIn();
     event.completed();
     return;
   }

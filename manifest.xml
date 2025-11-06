@@ -7,8 +7,8 @@
   xsi:type="MailApp">
 
   <Id>cf06154b-60ae-4c9b-9a02-56a012d14b44</Id>
-  <Version>1.1</Version>
-  <ProviderName>Contoso</ProviderName>
+  <Version>1.5</Version>
+  <ProviderName>AKMF</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Stopka AKMF"/>
   <Description DefaultValue="Dodaj stopkę"/>

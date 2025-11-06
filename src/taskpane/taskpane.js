@@ -190,24 +190,6 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
         } catch (e) {
           console.log("[TP] sessionData set/get error:", e);
         }
-
-        // lekkie potwierdzenie w UI
-        // zamiast wcześniejszego notificationMessages.replaceAsync(... informationalMessage ...)
-        try {
-          Office.context.mailbox.item?.notificationMessages?.replaceAsync(
-            "sig_saved",
-            {
-              type: "informationalMessage",
-              message: "Podpis zapisany w pamięci dodatku.",
-              icon: "Icon.16x16", // ID z manifestu
-              actions: [], // brak przycisków – tylko info z ikoną
-            },
-            () => {}
-          );
-        } catch {
-          /* no-op */
-        }
-
         resolve();
       });
     });
