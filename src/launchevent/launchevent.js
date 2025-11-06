@@ -5,6 +5,7 @@ import { buildSignatureHtml } from "../common/signature"; // Twój generator HTM
 
 let pca;
 let isPCAInitialized = false;
+const FORCE_CACHE = true; // TYMCZASOWO tylko do testu
 
 // ====== DEBUG helper ======
 const LOG_PREFIX = "[EVT]";
@@ -224,6 +225,19 @@ async function setSignature(event) {
       platform: Office.context.platform,
       itemType: Office.context.mailbox.item?.itemType,
     });
+    if (FORCE_CACHE) {
+      const html = Office.context.roamingSettings.get("signature_html") || null;
+      showPath("forced-cached-html", `len=${html ? html.length : 0}`);
+      if (html) {
+        await insertHtmlSignatureWithRetry(html, event);
+        return;
+      }
+      // gdyby nic nie było w cache, pokaż prośbę o logowanie/konfigurację
+      showPath("no-cached-html");
+      notifyUserToSignIn();
+      event.completed();
+      return;
+    }
 
     // 1) Preferred path: silent + Graph
     try {
