@@ -1,11 +1,10 @@
 /* global console, fetch, Office */
 import { createNestablePublicClientApplication } from "@azure/msal-browser";
 import { auth } from "./authconfig"; // { clientId, authority }
-import { buildSignatureHtml } from "../common/signature"; // Twój generator HTML z signature.js
+import { buildSignatureHtml } from "../common/signature"; // Twój generator HTML
 
 let pca;
 let isPCAInitialized = false;
-const FORCE_CACHE = true; // TYMCZASOWO tylko do testu
 
 // ====== DEBUG helper ======
 const LOG_PREFIX = "[EVT]";
@@ -15,7 +14,7 @@ const d = (msg, obj) => {
   else console.log(`${LOG_PREFIX} ${ts} ${msg}`);
 };
 
-// Mały baner z informacją, którą ścieżką poszło + dodatkowe info
+// Mały baner w UI (łatwiej diagnozować w Classic)
 function showPath(tag, extra = "") {
   try {
     Office.context.mailbox.item.notificationMessages.replaceAsync(
@@ -48,7 +47,7 @@ async function initializePCA() {
   }
 }
 
-// ====== Wait until compose editor is ready (Classic needs this) ======
+// ====== Czekamy aż edytor jest gotowy (ważne dla Classic) ======
 function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -56,14 +55,12 @@ function wait(ms) {
 async function ensureComposeReady(maxTries = 30, delayMs = 200) {
   const item = Office?.context?.mailbox?.item;
   for (let i = 0; i < maxTries; i++) {
-    if (item?.body) {
+    if (item?.body?.getTypeAsync) {
       try {
         await new Promise((resolve) => item.body.getTypeAsync(() => resolve()));
         d("Compose editor ready.");
         return;
-      } catch {
-        /* retry */
-      }
+      } catch {}
     }
     await wait(delayMs);
   }
@@ -85,9 +82,9 @@ function notifyUserToSignIn() {
   });
 }
 
-// ====== Roaming/session storage helpers ======
+// ====== Odczyty z cache ======
 async function getSignatureHtmlPreferSession() {
-  // Jeśli kiedyś sessionData będzie dostępne w Classic — najpierw spróbujmy tam (u Ciebie dziś: false)
+  // sessionData u Ciebie nieobecne – zostawiamy na przyszłość
   if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.getAsync) {
     const sessionHtml = await new Promise((resolve) =>
       Office.sessionData.getAsync("signature_html", (r) => resolve(r?.value || null))
@@ -109,7 +106,7 @@ function getRoamingUserInfo() {
   }
 }
 
-// ====== Graph profile (silent only) ======
+// ====== Graph profile (silent) ======
 async function getProfileFromGraph() {
   await initializePCA();
 
@@ -118,6 +115,7 @@ async function getProfileFromGraph() {
   d("getProfileFromGraph: accounts before", { count: pca.getAllAccounts().length });
 
   if (!account) {
+    // spróbuj „obudzić” brokera bez promptu (czasem pomaga)
     try {
       if (Office.auth?.getAccessToken) {
         await Office.auth.getAccessToken({ allowSignInPrompt: false, forMSGraphAccess: true });
@@ -131,9 +129,7 @@ async function getProfileFromGraph() {
     }
   }
 
-  if (!account) {
-    throw new Error("No MSAL account available for silent auth.");
-  }
+  if (!account) throw new Error("No MSAL account available for silent auth.");
 
   const result = await pca.acquireTokenSilent({ scopes, account });
   d("acquireTokenSilent OK");
@@ -162,9 +158,9 @@ async function getProfileFromGraph() {
   };
 }
 
-// ====== Insert signature into item (with readiness + retry + verify) ======
+// ====== Wstawienie HTML (z retry) ======
 async function insertHtmlSignatureWithRetry(html, event) {
-  await ensureComposeReady(); // KLUCZOWE na Classic
+  await ensureComposeReady(); // ważne dla Classic
 
   const item = Office.context.mailbox.item;
   const isMessage = item.itemType === Office.MailboxEnums.ItemType.Message;
@@ -189,7 +185,6 @@ async function insertHtmlSignatureWithRetry(html, event) {
       );
     });
 
-  // próba 1 + ewentualny retry
   try {
     if (isMessage && canUseSetSignature) {
       await insertViaSignatureApi();
@@ -199,7 +194,7 @@ async function insertHtmlSignatureWithRetry(html, event) {
       d("body.setAsync succeeded");
     }
   } catch (e1) {
-    d("1st insert attempt failed, retrying once…", e1);
+    d("1st insert attempt failed, retrying…", e1);
     await wait(300);
     try {
       if (isMessage && canUseSetSignature) {
@@ -217,7 +212,7 @@ async function insertHtmlSignatureWithRetry(html, event) {
   event.completed();
 }
 
-// ====== Main event handler ======
+// ====== Główny handler: CACHE → GRAPH → USER_INFO ======
 async function setSignature(event) {
   try {
     showPath("evt-start");
@@ -225,46 +220,33 @@ async function setSignature(event) {
       platform: Office.context.platform,
       itemType: Office.context.mailbox.item?.itemType,
     });
-    if (FORCE_CACHE) {
-      const html = Office.context.roamingSettings.get("signature_html") || null;
-      showPath("forced-cached-html", `len=${html ? html.length : 0}`);
-      if (html) {
-        await insertHtmlSignatureWithRetry(html, event);
-        return;
-      }
-      // gdyby nic nie było w cache, pokaż prośbę o logowanie/konfigurację
-      showPath("no-cached-html");
-      notifyUserToSignIn();
-      event.completed();
+
+    // 1) CACHE FIRST — na Classic daje natychmiastowy efekt
+    let cachedHtml = await getSignatureHtmlPreferSession();
+    if (cachedHtml) {
+      showPath("cached-html", `len=${cachedHtml.length}`);
+      await insertHtmlSignatureWithRetry(cachedHtml, event);
       return;
     }
 
-    // 1) Preferred path: silent + Graph
+    // 2) Silent Graph → świeży HTML
     try {
       d("Trying silent Graph path…");
       const profile = await getProfileFromGraph();
       d("Silent Graph OK. Profile", profile);
 
-      const signatureHtml = buildSignatureHtml(profile);
-      d("Built signatureHtml from Graph", { len: signatureHtml?.length || 0 });
+      const freshHtml = buildSignatureHtml(profile);
+      d("Built signatureHtml from Graph", { len: freshHtml?.length || 0 });
 
-      showPath("silent-graph", `len=${signatureHtml?.length || 0}`);
-      await insertHtmlSignatureWithRetry(signatureHtml, event);
+      showPath("silent-graph", `len=${freshHtml?.length || 0}`);
+      await insertHtmlSignatureWithRetry(freshHtml, event);
       return;
     } catch (silentErr) {
       d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
-      // przechodzimy do cache
+      // przechodzimy do user_info
     }
 
-    // 2) Cache: sessionData (jeśli kiedyś będzie) -> roamingSettings
-    let html = await getSignatureHtmlPreferSession();
-    if (html) {
-      showPath("cached-html", `len=${html.length}`);
-      await insertHtmlSignatureWithRetry(html, event);
-      return;
-    }
-
-    // 3) Ostateczny fallback: z user_info (również zapisane przez taskpane)
+    // 3) Ostateczny fallback — z user_info (też zapisuje taskpane)
     const userInfo = getRoamingUserInfo();
     d("Read user_info", { found: !!userInfo });
     if (userInfo) {
@@ -277,7 +259,7 @@ async function setSignature(event) {
       }
     }
 
-    // 4) Brak danych
+    // 4) Brak danych → poproś o logowanie
     d("No HTML and no user_info. Asking user to sign in.");
     showPath("no-data");
     notifyUserToSignIn();
@@ -289,7 +271,7 @@ async function setSignature(event) {
   }
 }
 
-// ====== Event hooks (muszą pasować do manifestu LaunchEvent) ======
+// ====== Event hooks (muszą pasować do manifestu) ======
 function onNewMessageComposeHandler(event) {
   setSignature(event);
 }
