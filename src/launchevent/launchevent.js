@@ -52,29 +52,74 @@ async function ensureComposeReady(maxTries = 30, delayMs = 200) {
 }
 
 // ====== UI helpers (tylko monit o logowanie) ======
-function getCommandId() {
+function get_command_id() {
+  // UPEWNIJ SIĘ: te ID muszą być identyczne jak w manifeście (Command Surface)
   return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
     ? "MRCS_TpBtn1"
     : "MRCS_TpBtn0";
 }
-function notifyUserToSignIn() {
-  Office.context.mailbox.item.notificationMessages.replaceAsync(
-    "sign_in_needed",
-    {
-      type: "insightMessage",
-      message: "Zaloguj się w dodatku, aby automatycznie wstawić stopkę e-mail.",
-      icon: "Icon.16x16",
-      actions: [
-        { actionType: "showTaskPane", actionText: "Zaloguj się", commandId: getCommandId(), contextData: "{}" },
-      ],
-    },
-    () => {}
-  );
-}
+
 function clearSignInNotice() {
+  try {
+    Office.context.mailbox.item.notificationMessages.removeAsync("16c028c6_sign_in_notification", () => {});
+  } catch {}
   try {
     Office.context.mailbox.item.notificationMessages.removeAsync("sign_in_needed", () => {});
   } catch {}
+}
+
+function notifyUserToSignIn() {
+  const item = Office.context.mailbox.item;
+  if (!item?.notificationMessages) return;
+
+  const key = "16c028c6_sign_in_notification"; // Twój stary klucz
+  const messageText = "Zaloguj się w panelu dodatku, aby automatycznie wstawić stopkę e-mail.";
+
+  // Najpierw usuń ewentualny istniejący komunikat o tym kluczu
+  try {
+    item.notificationMessages.removeAsync(key, () => {});
+  } catch {}
+
+  // 1) Klasyczny wariant, którego używałeś — addAsync + insightMessage
+  try {
+    item.notificationMessages.addAsync(
+      key,
+      {
+        type: "insightMessage",
+        message: messageText,
+        icon: "Icon.16x16",
+        actions: [
+          {
+            actionType: "showTaskPane",
+            actionText: "Zaloguj się",
+            commandId: get_command_id(),
+            contextData: "{}", // zamiast "{''}"
+          },
+        ],
+      },
+      (res) => {
+        // 2) Automatyczny fallback (gdy insight nie jest obsługiwany)
+        if (res?.status !== Office.AsyncResultStatus.Succeeded) {
+          try {
+            item.notificationMessages.replaceAsync(
+              "sign_in_needed",
+              { type: "informationalMessage", message: messageText, icon: "Icon.16x16", persistent: false },
+              () => {}
+            );
+          } catch {}
+        }
+      }
+    );
+  } catch {
+    // Awaryjnie — od razu zwykły baner
+    try {
+      item.notificationMessages.replaceAsync(
+        "sign_in_needed",
+        { type: "informationalMessage", message: messageText, icon: "Icon.16x16", persistent: false },
+        () => {}
+      );
+    } catch {}
+  }
 }
 
 // ====== Odczyty z cache ======
@@ -247,6 +292,7 @@ async function setSignature(event) {
     notifyUserToSignIn();
     event.completed();
   } catch (e) {
+    console.log("[EVT] no data -> notifyUserToSignIn()");
     d("Event handler failed (outer catch)", e);
     notifyUserToSignIn();
     event.completed();
