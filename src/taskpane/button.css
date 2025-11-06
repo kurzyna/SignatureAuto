@@ -1,0 +1,122 @@
+/*Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license.*/
+/* ===========================================
+   PODSTAWOWY STYL PRZYCISKÓW
+   =========================================== */
+
+.Button {
+  color: #333333;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 8px 22px;
+  box-shadow: none;
+  background-color: #f4f4f4;
+  border: 1px solid #f4f4f4;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 36px;
+  min-width: 120px;
+  transition: all 0.2s ease-in-out;
+}
+
+/* Hover / Focus / Active */
+.Button:hover {
+  background-color: #eaeaea;
+  border-color: #eaeaea;
+}
+
+.Button:focus {
+  outline: 2px solid #0f6cbd;
+  outline-offset: 2px;
+}
+
+.Button:active {
+  background-color: #d0e7ff;
+  border-color: #0f6cbd;
+}
+
+/* Disabled */
+.Button:disabled,
+.Button.is-disabled {
+  background-color: #f4f4f4;
+  border-color: #f4f4f4;
+  color: #a6a6a6;
+  cursor: default;
+}
+
+/* ===========================================
+   PRZYCISK GŁÓWNY (Primary)
+   =========================================== */
+.Button.Button--primary {
+  background-color: #0f6cbd;
+  border-color: #0f6cbd;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.Button.Button--primary:hover {
+  background-color: #005a9e;
+  border-color: #005a9e;
+}
+
+.Button.Button--primary:focus {
+  background-color: #005a9e;
+  border-color: #004578;
+}
+
+.Button.Button--primary:active {
+  background-color: #0f6cbd;
+  border-color: #0f6cbd;
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* Disabled */
+.Button.Button--primary:disabled,
+.Button.Button--primary.is-disabled {
+  background-color: #f4f4f4;
+  border-color: #f4f4f4;
+  color: #a6a6a6;
+}
+
+/* ===========================================
+   TEKST / OPIS
+   =========================================== */
+.Button-label {
+  color: inherit;
+  font-family: "Segoe UI Semibold", "Segoe UI", Tahoma, Arial, sans-serif;
+  text-align: center;
+}
+
+.Button-icon,
+.Button-description {
+  display: none;
+}
+
+/* ===========================================
+   DODATKOWE DOPASOWANIA DO PANELU TASKPANE
+   =========================================== */
+.Button--primary {
+  width: 100%;
+  max-width: 240px;
+  margin: 12px auto;
+  text-align: center;
+}
+
+.Button--primary .Button-label {
+  font-size: 15px;
+  letter-spacing: 0.2px;
+}
+
+.Button--primary:hover {
+  transform: translateY(-1px);
+}
+
+.Button--primary:active {
+  transform: translateY(0);
+}

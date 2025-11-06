@@ -1,0 +1,69 @@
+<!-- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. -->
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stopka automatyczna AKMF</title>
+
+    <!-- Office JavaScript API -->
+    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/beta/hosted/office.js"></script>
+
+    <!-- Office UI Fabric -->
+    <link rel="stylesheet"
+        href="https://res-1.cdn.office.net/files/fabric-cdn-prod_20230815.002/office-ui-fabric-core/11.1.0/css/fabric.min.css" />
+
+    <!-- Style przycisków (oryginalny plik Microsoft) -->
+    <link href="button.css" rel="stylesheet" type="text/css" />
+
+    <!-- Nasz główny styl -->
+    <link href="taskpane.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body class="ms-font-m ms-welcome ms-Fabric">
+    <!-- Nagłówek -->
+    <header class="ms-welcome__header ms-bgColor-neutralLighter">
+        <img width="120" height="120" src="../../assets/akmf_logo.png" alt="Logo AKMF" title="AKMF" />
+    </header>
+
+    <!-- Komunikat o sideload -->
+    <section id="sideload-msg" class="ms-welcome__main">
+        <h2 class="ms-font-xl">
+            Wystąpił błąd. Proszę
+            <a target="_blank"
+                href="https://learn.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins#sideload-an-office-add-in-for-testing">
+                załaduj
+            </a> dodatek ręcznie.
+        </h2>
+    </section>
+
+    <!-- Właściwe okno dodatku -->
+    <main id="app-body" class="ms-welcome__main" style="display: none;">
+        <h2 class="ms-font-xl">Stopka automatyczna AKMF</h2>
+        <p class="ms-font-l center-text">
+            Ten dodatek wykorzystuje logowanie SSO w celu automatycznego tworzenia stopki e-mail.
+        </p>
+
+        <!-- Przycisk logowania -->
+        <button class="Button Button--primary" id="btnSignIn">
+            <span class="Button-icon"><i class="ms-Icon ms-Icon--plus"></i></span>
+            <span class="Button-label">Zaloguj się</span>
+            <span class="Button-description">Zaloguj się, aby pobrać dane z Microsoft 365</span>
+        </button>
+
+        <!-- Informacja o zalogowanym użytkowniku -->
+        <p id="whoami">
+            <label id="item-subject"></label>
+        </p>
+
+        <!-- Podgląd stopki -->
+        <section class="signature-preview-section">
+            <h3 class="ms-font-l">Podgląd stopki</h3>
+            <iframe id="signature-preview" title="Podgląd stopki" sandbox="allow-same-origin"></iframe>
+        </section>
+    </main>
+</body>
+
+</html>
