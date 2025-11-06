@@ -1,0 +1,117 @@
+/* ======== Ogólne ======== */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background-color: #fafafa;
+}
+
+/* ======== Nagłówek ======== */
+.ms-welcome__header {
+  padding: 30px 20px 10px;
+  text-align: center;
+}
+
+.ms-welcome__header img {
+  border-radius: 50%;
+  margin-bottom: 10px;
+  width: 100px;
+  height: 100px;
+}
+
+/* ======== Główna sekcja ======== */
+.ms-welcome__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+  padding: 10px 20px 10px 10px;
+  gap: 10px; /* zmniejsza odstępy między elementami */
+}
+
+/* ======== Przycisk ======== */
+#btnSignIn {
+  margin-top: 5px;
+  margin-bottom: 5px;
+  text-align: center;
+  width: 130px;
+  height: 28px; /* zamiast 10px — 10 było zbyt małe, ucinało tekst */
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 4px 10px;
+}
+
+/* Nadpisanie stylu dla tekstu w przycisku */
+#btnSignIn .Button-label {
+  font-size: 12px !important;
+  font-weight: 500;
+}
+
+/* ======== Informacja o zalogowanym użytkowniku ======== */
+#whoami {
+  margin: 5px 0 10px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+#whoami b {
+  color: #000;
+  font-weight: 600;
+}
+
+/* ======== Sekcja podglądu ======== */
+.signature-preview-section {
+  width: 100%;
+  max-width: 480px;
+  margin-top: 5px;
+  text-align: left;
+}
+
+.signature-preview-section h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  text-align: left;
+}
+
+#signature-preview {
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background-color: #fff;
+  padding: 4px;
+}
+h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  text-align: left;
+  width: 100%;
+}
+
+/* ======== Drobne poprawki ======== */
+.center-text {
+  text-align: center;
+  max-width: 400px;
+  margin: 0 auto;
+  line-height: 1.4;
+}
+.ms-font-l {
+  font-size: 13px; /* było 15px — mniejsze dla komunikatu o SSO */
+  text-align: center;
+  line-height: 1.4;
+  color: #605e5c;
+  margin-bottom: 12px;
+}
+/* Nagłówki */
+.ms-font-xl {
+  font-size: 18px;
+  margin-bottom: 6px;
+  text-align: center;
+}
