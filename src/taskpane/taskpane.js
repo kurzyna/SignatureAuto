@@ -113,7 +113,7 @@ async function signInUser() {
   const html = buildSignatureHtml(profile);
   d("Built signature HTML", { len: html?.length || 0 });
 
-  // 5) Preview
+  // 5) Preview (uwaga: ostrzeżenie about:srcdoc jest niegroźne)
   if (signaturePreview) {
     try {
       signaturePreview.srcdoc = html;
@@ -129,7 +129,7 @@ async function signInUser() {
     itemSubject.innerHTML = `Jesteś zalogowany jako <b>${name}</b>.`;
   }
 
-  // 7) Save to roamingSettings (used by event runtime)
+  // 7) Save to roamingSettings (+ sessionData bridge)
   const disableClientSig = !!(chkOverrideClientSig && chkOverrideClientSig.checked);
   await saveSignatureToStorage(profile, html, disableClientSig);
 
@@ -156,9 +156,29 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
     Office.context.roamingSettings.set("override_olk_signature", disableClientSig ? "1" : "0");
 
     await new Promise((resolve) => {
-      Office.context.roamingSettings.saveAsync((res) => {
+      Office.context.roamingSettings.saveAsync(async (res) => {
         d("roamingSettings.saveAsync", { status: res?.status, error: res?.error });
-        // toast
+
+        // read-back (potwierdzenie)
+        try {
+          const readBack = Office.context.roamingSettings.get("signature_html");
+          d("roamingSettings read-back signature_html len", readBack?.length || 0);
+        } catch (e) {
+          d("roamingSettings read-back error", e);
+        }
+
+        // sessionData bridge (Classic/Windows)
+        try {
+          if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.setAsync) {
+            await new Promise((r) => Office.sessionData.setAsync("signature_html", html, () => r()));
+            await new Promise((r) => Office.sessionData.setAsync("isAuthenticated", "1", () => r()));
+            d("sessionData set: signature_html + isAuthenticated=1");
+          }
+        } catch (e) {
+          d("sessionData set error", e);
+        }
+
+        // lekki toast
         try {
           Office.context.mailbox.item?.notificationMessages?.replaceAsync(
             "sig_saved",
@@ -171,19 +191,12 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
             () => {}
           );
         } catch {}
+
         resolve();
       });
     });
 
-    // bridge for Desktop (optional, nice-to-have)
-    if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.setAsync) {
-      await new Promise((resolve) => {
-        Office.sessionData.setAsync("isAuthenticated", "1", () => resolve());
-      });
-      d("sessionData flag set (PC).");
-    }
-
-    // Disable native signature on current item (optional)
+    // Disable native client signature on current item (optional)
     if (disableClientSig && Office.context.mailbox.item?.disableClientSignatureAsync) {
       Office.context.mailbox.item.disableClientSignatureAsync(() => {});
       d("Client signature disabled on current item.");

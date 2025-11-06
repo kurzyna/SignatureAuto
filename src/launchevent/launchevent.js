@@ -51,7 +51,6 @@ function getCommandId() {
     ? "MRCS_TpBtn1"
     : "MRCS_TpBtn0";
 }
-
 function notifyUserToSignIn() {
   Office.context.mailbox.item.notificationMessages.addAsync("sign_in_needed", {
     type: "insightMessage",
@@ -61,9 +60,21 @@ function notifyUserToSignIn() {
   });
 }
 
-// ====== Roaming storage helpers ======
-function getRoamingSignatureHtml() {
-  return Office.context.roamingSettings.get("signature_html") || null;
+// ====== Roaming/session storage helpers ======
+async function getSignatureHtmlPreferSession() {
+  // 1) Classic/Windows – sessionData (natychmiastowy mostek)
+  if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.getAsync) {
+    const sessionHtml = await new Promise((resolve) =>
+      Office.sessionData.getAsync("signature_html", (r) => resolve(r?.value || null))
+    );
+    d("sessionData signature_html", { found: !!sessionHtml, len: sessionHtml?.length || 0 });
+    if (sessionHtml) return sessionHtml;
+  }
+
+  // 2) Standard – roamingSettings
+  const rsHtml = Office.context.roamingSettings.get("signature_html") || null;
+  d("roamingSettings signature_html", { found: !!rsHtml, len: rsHtml?.length || 0 });
+  return rsHtml;
 }
 function getRoamingUserInfo() {
   const raw = Office.context.roamingSettings.get("user_info");
@@ -84,7 +95,6 @@ async function getProfileFromGraph() {
   d("getProfileFromGraph: accounts before", { count: pca.getAllAccounts().length });
 
   if (!account) {
-    // try to bootstrap broker without prompt
     try {
       if (Office.auth?.getAccessToken) {
         await Office.auth.getAccessToken({ allowSignInPrompt: false, forMSGraphAccess: true });
@@ -181,9 +191,8 @@ async function setSignature(event) {
       // go to fallback
     }
 
-    // 2) Fallback: pre-saved HTML from roamingSettings
-    let html = getRoamingSignatureHtml();
-    d("Read signature_html from roamingSettings", { found: !!html, len: html?.length || 0 });
+    // 2) Fallback: pre-saved HTML (sessionData -> roamingSettings)
+    let html = await getSignatureHtmlPreferSession();
 
     // 2a) If missing, try to build from user_info
     if (!html) {
@@ -196,7 +205,7 @@ async function setSignature(event) {
     }
 
     if (html) {
-      showPath("roaming-html");
+      showPath("cached-html");
       setSignatureHtmlIntoItem(html, event);
       return;
     }
