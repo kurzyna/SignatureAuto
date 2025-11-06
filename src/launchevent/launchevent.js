@@ -41,28 +41,37 @@ async function initializePCA() {
  */
 async function getUserName() {
   await initializePCA();
-  // Scopes potrzebne do pobrania danych profilu
+
+  const accountId = localStorage.getItem("msalAccountId");
+  const accounts = pca.getAllAccounts();
+  const account = accounts.find((acc) => acc.homeAccountId === accountId);
+
+  if (!account) {
+    console.log("Brak konta w cache MSAL. Użytkownik musi się zalogować.");
+    throw new Error("Brak konta w cache MSAL. Użytkownik musi się zalogować.");
+  }
+
   const tokenRequest = {
     scopes: ["User.Read", "openid", "profile"],
+    account: account,
   };
+
   let accessToken = null;
 
   try {
-    console.log("Trying to acquire token silently...");
+    console.log("Próba pobrania tokenu dla zapisanej tożsamości...");
     const userAccount = await pca.acquireTokenSilent(tokenRequest);
-    console.log("Acquired token silently.");
     accessToken = userAccount.accessToken;
+    console.log("Token pobrany pomyślnie.");
   } catch (error) {
-    console.log(`Unable to acquire token silently: ${error}`);
+    console.log(`Błąd pobierania tokenu: ${error}`);
     throw error;
   }
 
-  if (accessToken === null) {
-    console.log(`Unable to acquire access token. Access token is null.`);
-    throw new Error("Unable to acquire access token. Access token is null.");
+  if (!accessToken) {
+    throw new Error("Token jest pusty.");
   }
 
-  // 🔹 Pobranie szczegółowych danych użytkownika
   const response = await fetch(
     "https://graph.microsoft.com/v1.0/me?$select=givenName,surname,mail,userPrincipalName,businessPhones,mobilePhone,jobTitle,department,officeLocation",
     {
@@ -70,25 +79,24 @@ async function getUserName() {
     }
   );
 
-  if (response.ok) {
-    const data = await response.json();
-
-    // Zwracamy pełny obiekt z wszystkimi polami, zamiast tylko displayName
-    return {
-      firstName: data.givenName || "",
-      lastName: data.surname || "",
-      email: data.mail || data.userPrincipalName || "",
-      phone: (data.businessPhones && data.businessPhones[0]) || data.mobilePhone || "",
-      jobTitle: data.jobTitle || "",
-      team: data.department || "",
-      office: data.officeLocation || "",
-      displayName: data.displayName || `${data.givenName || ""} ${data.surname || ""}`.trim(),
-    };
-  } else {
+  if (!response.ok) {
     const errorText = await response.text();
-    console.log("Microsoft Graph call failed - error text: " + errorText);
+    console.log("Błąd wywołania Graph API: " + errorText);
     throw new Error(errorText);
   }
+
+  const data = await response.json();
+
+  return {
+    firstName: data.givenName || "",
+    lastName: data.surname || "",
+    email: data.mail || data.userPrincipalName || "",
+    phone: (data.businessPhones && data.businessPhones[0]) || data.mobilePhone || "",
+    jobTitle: data.jobTitle || "",
+    team: data.department || "",
+    office: data.officeLocation || "",
+    displayName: data.displayName || `${data.givenName || ""} ${data.surname || ""}`.trim(),
+  };
 }
 
 /**

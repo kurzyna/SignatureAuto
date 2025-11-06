@@ -49,6 +49,10 @@ async function signInUser() {
   // 1) Silent
   try {
     const authResult = await pca.acquireTokenSilent(tokenRequest);
+    const account = pca.getAllAccounts()[0];
+    if (account) {
+      localStorage.setItem("msalAccountId", account.homeAccountId);
+    }
     accessToken = authResult.accessToken;
     console.log("Token został pobrany w trybie cichym.");
   } catch (error) {
@@ -59,6 +63,11 @@ async function signInUser() {
   if (!accessToken) {
     try {
       const authResult = await pca.acquireTokenPopup(tokenRequest);
+      const account = pca.getAllAccounts()[0];
+      if (account) {
+        localStorage.setItem("msalAccountId", account.homeAccountId);
+      }
+
       accessToken = authResult.accessToken;
       console.log("Token został pobrany po interaktywnym logowaniu.");
     } catch (popupError) {
