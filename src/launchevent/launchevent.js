@@ -1,12 +1,12 @@
 /* global console, fetch, Office */
 import { createNestablePublicClientApplication } from "@azure/msal-browser";
-import { auth } from "./authconfig"; // { clientId, authority }
-import { buildSignatureHtml } from "../common/signature"; // Twój generator HTML
+import { auth } from "./authconfig";
+import { buildSignatureHtml } from "../common/signature";
 
 let pca;
 let isPCAInitialized = false;
 
-// ====== DEBUG helper ======
+// ====== LOG helper (konsola, bez banerów) ======
 const LOG_PREFIX = "[EVT]";
 const d = (msg, obj) => {
   const ts = new Date().toISOString();
@@ -14,23 +14,7 @@ const d = (msg, obj) => {
   else console.log(`${LOG_PREFIX} ${ts} ${msg}`);
 };
 
-// Mały baner w UI (łatwiej diagnozować w Classic)
-function showPath(tag, extra = "") {
-  try {
-    Office.context.mailbox.item.notificationMessages.replaceAsync(
-      "sig_path",
-      {
-        type: "informationalMessage",
-        message: `evt: ${tag}${extra ? ` (${extra})` : ""}`,
-        icon: "Icon.16x16",
-        persistent: false,
-      },
-      () => {}
-    );
-  } catch {}
-}
-
-// ====== Init MSAL (NAA-friendly) ======
+// ====== MSAL init ======
 async function initializePCA() {
   if (isPCAInitialized) return;
   try {
@@ -67,24 +51,35 @@ async function ensureComposeReady(maxTries = 30, delayMs = 200) {
   throw new Error("Compose body is not ready.");
 }
 
-// ====== UI helpers ======
+// ====== UI helpers (tylko monit o logowanie) ======
 function getCommandId() {
   return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
     ? "MRCS_TpBtn1"
     : "MRCS_TpBtn0";
 }
 function notifyUserToSignIn() {
-  Office.context.mailbox.item.notificationMessages.addAsync("sign_in_needed", {
-    type: "insightMessage",
-    message: "Zaloguj się w dodatku, aby automatycznie wstawić stopkę.",
-    icon: "Icon.16x16",
-    actions: [{ actionType: "showTaskPane", actionText: "Zaloguj się", commandId: getCommandId(), contextData: "{}" }],
-  });
+  Office.context.mailbox.item.notificationMessages.replaceAsync(
+    "sign_in_needed",
+    {
+      type: "insightMessage",
+      message: "Zaloguj się w dodatku, aby automatycznie wstawić stopkę e-mail.",
+      icon: "Icon.16x16",
+      actions: [
+        { actionType: "showTaskPane", actionText: "Zaloguj się", commandId: getCommandId(), contextData: "{}" },
+      ],
+    },
+    () => {}
+  );
+}
+function clearSignInNotice() {
+  try {
+    Office.context.mailbox.item.notificationMessages.removeAsync("sign_in_needed", () => {});
+  } catch {}
 }
 
 // ====== Odczyty z cache ======
 async function getSignatureHtmlPreferSession() {
-  // sessionData u Ciebie nieobecne – zostawiamy na przyszłość
+  // (sessionData na Twojej instancji nie jest dostępne, ale zostawiamy na przyszłość)
   if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.getAsync) {
     const sessionHtml = await new Promise((resolve) =>
       Office.sessionData.getAsync("signature_html", (r) => resolve(r?.value || null))
@@ -115,7 +110,6 @@ async function getProfileFromGraph() {
   d("getProfileFromGraph: accounts before", { count: pca.getAllAccounts().length });
 
   if (!account) {
-    // spróbuj „obudzić” brokera bez promptu (czasem pomaga)
     try {
       if (Office.auth?.getAccessToken) {
         await Office.auth.getAccessToken({ allowSignInPrompt: false, forMSGraphAccess: true });
@@ -193,6 +187,7 @@ async function insertHtmlSignatureWithRetry(html, event) {
       await insertViaBodySet();
       d("body.setAsync succeeded");
     }
+    clearSignInNotice(); // sukces → usuń ewentualny wcześniejszy monit
   } catch (e1) {
     d("1st insert attempt failed, retrying…", e1);
     await wait(300);
@@ -204,6 +199,7 @@ async function insertHtmlSignatureWithRetry(html, event) {
         await insertViaBodySet();
         d("body.setAsync succeeded (retry)");
       }
+      clearSignInNotice();
     } catch (e2) {
       d("2nd insert attempt failed", e2);
     }
@@ -212,56 +208,42 @@ async function insertHtmlSignatureWithRetry(html, event) {
   event.completed();
 }
 
-// ====== Główny handler: CACHE → GRAPH → USER_INFO ======
+// ====== Główny handler: CACHE → GRAPH → USER_INFO (monit tylko gdy trzeba) ======
 async function setSignature(event) {
   try {
-    showPath("evt-start");
     d("Event start", {
       platform: Office.context.platform,
       itemType: Office.context.mailbox.item?.itemType,
     });
 
-    // 1) CACHE FIRST — na Classic daje natychmiastowy efekt
+    // 1) CACHE FIRST
     let cachedHtml = await getSignatureHtmlPreferSession();
     if (cachedHtml) {
-      showPath("cached-html", `len=${cachedHtml.length}`);
       await insertHtmlSignatureWithRetry(cachedHtml, event);
       return;
     }
 
-    // 2) Silent Graph → świeży HTML
+    // 2) SSO silent → Graph → świeży HTML
     try {
-      d("Trying silent Graph path…");
       const profile = await getProfileFromGraph();
-      d("Silent Graph OK. Profile", profile);
-
       const freshHtml = buildSignatureHtml(profile);
-      d("Built signatureHtml from Graph", { len: freshHtml?.length || 0 });
-
-      showPath("silent-graph", `len=${freshHtml?.length || 0}`);
       await insertHtmlSignatureWithRetry(freshHtml, event);
       return;
     } catch (silentErr) {
       d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
-      // przechodzimy do user_info
     }
 
-    // 3) Ostateczny fallback — z user_info (też zapisuje taskpane)
+    // 3) Fallback: z user_info (jeśli taskpane je zapisał)
     const userInfo = getRoamingUserInfo();
-    d("Read user_info", { found: !!userInfo });
     if (userInfo) {
       const built = buildSignatureHtml(userInfo);
-      d("Built signatureHtml from user_info", { len: built?.length || 0 });
       if (built) {
-        showPath("built-from-user-info", `len=${built.length}`);
         await insertHtmlSignatureWithRetry(built, event);
         return;
       }
     }
 
-    // 4) Brak danych → poproś o logowanie
-    d("No HTML and no user_info. Asking user to sign in.");
-    showPath("no-data");
+    // 4) Nic nie mamy → pokaż monit o zalogowanie
     notifyUserToSignIn();
     event.completed();
   } catch (e) {
@@ -271,7 +253,7 @@ async function setSignature(event) {
   }
 }
 
-// ====== Event hooks (muszą pasować do manifestu) ======
+// ====== Event hooks ======
 function onNewMessageComposeHandler(event) {
   setSignature(event);
 }
