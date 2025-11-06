@@ -1,30 +1,57 @@
 /* global console, fetch, Office */
-
 import { createNestablePublicClientApplication } from "@azure/msal-browser";
-import { auth } from "./authconfig";
+import { auth } from "./authconfig"; // { clientId, authority }
 import { buildSignatureHtml } from "../common/signature";
 
 let pca;
 let isPCAInitialized = false;
 
-// ===== Init MSAL (NAA-friendly) =====
+// ====== DEBUG helper ======
+const LOG_PREFIX = "[EVT]";
+const d = (msg, obj) => {
+  const ts = new Date().toISOString();
+  if (obj !== undefined) console.log(`${LOG_PREFIX} ${ts} ${msg}`, obj);
+  else console.log(`${LOG_PREFIX} ${ts} ${msg}`);
+};
+function showPath(tag) {
+  try {
+    Office.context.mailbox.item.notificationMessages.replaceAsync(
+      "sig_path",
+      {
+        type: "informationalMessage",
+        message: `Signature path: ${tag}`,
+        icon: "Icon.16x16",
+        persistent: false,
+      },
+      () => {}
+    );
+  } catch {}
+}
+
+// ====== Init MSAL (NAA-friendly) ======
 async function initializePCA() {
   if (isPCAInitialized) return;
-
   try {
     pca = await createNestablePublicClientApplication({
-      auth, // { clientId, authority }
+      auth,
       cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false },
     });
     const acc = pca.getAllAccounts()[0];
     if (acc) pca.setActiveAccount(acc);
     isPCAInitialized = true;
+    d("PCA initialized.", { accounts: pca.getAllAccounts() });
   } catch (error) {
-    console.log(`Error creating PCA: ${error}`);
+    d("Error creating PCA", error);
   }
 }
 
-// ===== Helpers: notifications / platform =====
+// ====== UI helpers ======
+function getCommandId() {
+  return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
+    ? "MRCS_TpBtn1"
+    : "MRCS_TpBtn0";
+}
+
 function notifyUserToSignIn() {
   Office.context.mailbox.item.notificationMessages.addAsync("sign_in_needed", {
     type: "insightMessage",
@@ -34,27 +61,10 @@ function notifyUserToSignIn() {
   });
 }
 
-function getCommandId() {
-  return Office.context.mailbox.item.itemType === Office.MailboxEnums.ItemType.Appointment
-    ? "MRCS_TpBtn1"
-    : "MRCS_TpBtn0";
+// ====== Roaming storage helpers ======
+function getRoamingSignatureHtml() {
+  return Office.context.roamingSettings.get("signature_html") || null;
 }
-
-function info(message, persistent = false, key = "eventInfo") {
-  try {
-    Office.context.mailbox.item.notificationMessages.replaceAsync(
-      key,
-      {
-        type: "informationalMessage",
-        message,
-        icon: "Icon.16x16",
-        persistent,
-      },
-      () => {}
-    );
-  } catch {}
-}
-
 function getRoamingUserInfo() {
   const raw = Office.context.roamingSettings.get("user_info");
   if (!raw) return null;
@@ -65,15 +75,16 @@ function getRoamingUserInfo() {
   }
 }
 
-// ===== Graph profile =====
+// ====== Graph profile (silent only) ======
 async function getProfileFromGraph() {
   await initializePCA();
 
   const scopes = ["User.Read", "openid", "profile"];
   let account = pca.getAllAccounts()[0];
+  d("getProfileFromGraph: accounts before", { count: pca.getAllAccounts().length });
 
   if (!account) {
-    // Spróbuj „obudzić” brokera bez promptu (czasem pomaga w Desktop)
+    // try to bootstrap broker without prompt
     try {
       if (Office.auth?.getAccessToken) {
         await Office.auth.getAccessToken({ allowSignInPrompt: false, forMSGraphAccess: true });
@@ -81,8 +92,9 @@ async function getProfileFromGraph() {
         await OfficeRuntime.auth.getAccessToken({ allowSignInPrompt: false });
       }
       account = pca.getAllAccounts()[0];
-    } catch {
-      // brak cichego SSO – przejdziemy do fallbacku
+      d("getProfileFromGraph: accounts after bootstrap", { count: pca.getAllAccounts().length });
+    } catch (e) {
+      d("Bootstrap getAccessToken failed (no prompt)", e);
     }
   }
 
@@ -91,17 +103,19 @@ async function getProfileFromGraph() {
   }
 
   const result = await pca.acquireTokenSilent({ scopes, account });
-  const accessToken = result.accessToken;
+  d("acquireTokenSilent OK");
 
+  const accessToken = result.accessToken;
   const resp = await fetch(
     "https://graph.microsoft.com/v1.0/me?$select=givenName,surname,mail,userPrincipalName,businessPhones,mobilePhone,jobTitle,department,officeLocation,displayName",
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Graph error ${resp.status}: ${text || resp.statusText}`);
+    const txt = await resp.text();
+    throw new Error(`Graph error ${resp.status}: ${txt || resp.statusText}`);
   }
   const data = await resp.json();
+  d("Graph /me OK");
 
   return {
     firstName: data.givenName || "",
@@ -115,7 +129,7 @@ async function getProfileFromGraph() {
   };
 }
 
-// ===== Wstawienie stopki =====
+// ====== Insert signature into item ======
 function setSignatureHtmlIntoItem(html, event) {
   const item = Office.context.mailbox.item;
   const isMessage = item.itemType === Office.MailboxEnums.ItemType.Message;
@@ -125,72 +139,81 @@ function setSignatureHtmlIntoItem(html, event) {
     Office.context.requirements.isSetSupported("Mailbox", "1.10") &&
     item.body?.setSignatureAsync;
 
+  d("setSignatureHtmlIntoItem: method", { isMessage, canUseSetSignature });
+
   if (isMessage && canUseSetSignature) {
     item.body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html, asyncContext: event }, (res) => {
       if (res.status === Office.AsyncResultStatus.Succeeded) {
-        console.log("Signature inserted with setSignatureAsync.");
+        d("setSignatureAsync succeeded");
+        event.completed();
       } else {
-        console.warn("setSignatureAsync failed, fallback to body.setAsync.", res.error);
-        item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => {});
+        d("setSignatureAsync failed -> fallback to setAsync", res.error);
+        item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
       }
-      event.completed();
     });
   } else {
-    item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html, asyncContext: event }, () =>
-      event.completed()
-    );
+    item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, () => event.completed());
   }
 }
 
-// ===== Główna procedura eventu =====
-// Fallback: jeden klucz z gotowym HTML zapisanym w taskpane
-function getRoamingSignatureHtml() {
-  return Office.context.roamingSettings.get("signature_html") || null;
-}
-
-// Fallback 2: dane użytkownika zapisane w taskpane (jeśli chcesz złożyć HTML lokalnie)
-
+// ====== Main event handler ======
 async function setSignature(event) {
   try {
-    // 1) Idealnie: SSO (silent) + Graph + świeży HTML
+    d("Event start", {
+      platform: Office.context.platform,
+      itemType: Office.context.mailbox.item?.itemType,
+    });
+
+    // 1) Preferred path: silent + Graph
     try {
-      const profile = await getProfileFromGraph(); // Twoja funkcja silent+Graph
-      const signatureHtml = buildSignatureHtml(profile); // generator z signature.js
-      setSignatureHtmlIntoItem(signatureHtml, event); // wstaw do elementu
+      d("Trying silent Graph path...");
+      const profile = await getProfileFromGraph();
+      d("Silent Graph OK. Profile", profile);
+
+      const signatureHtml = buildSignatureHtml(profile);
+      d("Built signatureHtml from Graph", { len: signatureHtml?.length || 0 });
+
+      showPath("silent-graph");
+      setSignatureHtmlIntoItem(signatureHtml, event);
       return;
     } catch (silentErr) {
-      console.log("Silent/Graph path not available:", silentErr?.message || silentErr);
-      // przechodzimy do fallbacku bez SSO
+      d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
+      // go to fallback
     }
 
-    // 2) Fallback: gotowy HTML z pamięci dodatku (zapisany wcześniej w taskpane)
+    // 2) Fallback: pre-saved HTML from roamingSettings
     let html = getRoamingSignatureHtml();
+    d("Read signature_html from roamingSettings", { found: !!html, len: html?.length || 0 });
 
-    // 2a) Gdyby nie było gotowego HTML, spróbuj złożyć z user_info (też zapisane przez taskpane)
+    // 2a) If missing, try to build from user_info
     if (!html) {
       const userInfo = getRoamingUserInfo();
+      d("Read user_info", { found: !!userInfo });
       if (userInfo) {
         html = buildSignatureHtml(userInfo);
+        d("Built signatureHtml from user_info", { len: html?.length || 0 });
       }
     }
 
     if (html) {
+      showPath("roaming-html");
       setSignatureHtmlIntoItem(html, event);
       return;
     }
 
-    // 3) Brak jakichkolwiek danych → pokaż prośbę o konfigurację/logowanie w panelu
+    // 3) No data
+    d("No HTML and no user_info. Asking user to sign in.");
+    showPath("no-data");
     notifyUserToSignIn();
     event.completed();
   } catch (e) {
-    console.error("Event handler failed:", e);
-    // Nie blokuj tworzenia wiadomości
+    d("Event handler failed (outer catch)", e);
     notifyUserToSignIn();
     event.completed();
   }
 }
 
-// ===== Hooki eventów z manifestu =====
+// ====== Event hooks (must match manifest LaunchEvent) ======
 function onNewMessageComposeHandler(event) {
   setSignature(event);
 }

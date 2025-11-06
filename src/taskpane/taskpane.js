@@ -1,108 +1,105 @@
 /* global document, console, fetch, Office */
 import { createNestablePublicClientApplication } from "@azure/msal-browser";
-import { auth } from "../launchevent/authconfig";
-import { buildSignatureHtml } from "../common/signature"; // generator HTML stopki
+import { auth } from "../launchevent/authconfig"; // { clientId, authority }
+import { buildSignatureHtml } from "../common/signature"; // MUSI eksportować funkcję generującą HTML
 
-// Elementy UI
+// ====== UI ======
 const sideloadMsg = document.getElementById("sideload-msg");
 const signInButton = document.getElementById("btnSignIn");
 const itemSubject = document.getElementById("item-subject");
 const signaturePreview = document.getElementById("signature-preview");
-
-// (opcjonalnie) checkbox w UI, jeśli chcesz wyłączać natywną stopkę Outlooka
 const chkOverrideClientSig = document.getElementById("chkOverrideClientSignature");
 
+// ====== DEBUG helper ======
+const LOG_PREFIX = "[TP]";
+const d = (msg, obj) => {
+  const ts = new Date().toISOString();
+  if (obj !== undefined) console.log(`${LOG_PREFIX} ${ts} ${msg}`, obj);
+  else console.log(`${LOG_PREFIX} ${ts} ${msg}`);
+};
+
+// ====== MSAL ======
 let pca;
 let isPCAInitialized = false;
 
 const MSAL_CONFIG = {
-  auth, // importujesz { clientId, authority } z authconfig
-  cache: {
-    cacheLocation: "localStorage",
-    storeAuthStateInCookie: false,
-  },
+  auth, // { clientId, authority }
+  cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false },
 };
 
 Office.onReady(async (info) => {
-  if (info.host === Office.HostType.Outlook) {
-    if (sideloadMsg) sideloadMsg.style.display = "none";
-    const appBody = document.getElementById("app-body");
-    if (appBody) appBody.style.display = "flex";
+  if (info.host !== Office.HostType.Outlook) return;
 
-    if (signInButton) signInButton.onclick = signInUser;
+  if (sideloadMsg) sideloadMsg.style.display = "none";
+  const appBody = document.getElementById("app-body");
+  if (appBody) appBody.style.display = "flex";
 
-    try {
-      pca = await createNestablePublicClientApplication(MSAL_CONFIG);
-      // Ustaw activeAccount, jeżeli coś już jest w cache
-      const acc = pca.getAllAccounts()[0];
-      if (acc) pca.setActiveAccount(acc);
-      isPCAInitialized = true;
-    } catch (error) {
-      console.log(`Błąd podczas tworzenia instancji PCA: ${error}`);
-    }
+  if (signInButton) signInButton.onclick = signInUser;
+
+  try {
+    pca = await createNestablePublicClientApplication(MSAL_CONFIG);
+    const acc = pca.getAllAccounts()[0];
+    if (acc) pca.setActiveAccount(acc);
+    isPCAInitialized = true;
+    d("PCA initialized.", { accounts: pca.getAllAccounts() });
+  } catch (error) {
+    d("Error creating PCA", error);
   }
 });
 
-/**
- * Główna ścieżka: logowanie → Graph → profil → podgląd → zapis do pamięci → (opcjonalnie) jednorazowe wstawienie stopki.
- */
+// ====== Main: login -> fetch profile -> preview -> save -> (optional) insert once ======
 async function signInUser() {
   if (!isPCAInitialized) {
-    if (itemSubject) {
-      itemSubject.innerText =
-        "Nie można się zalogować, ponieważ aplikacja uwierzytelniająca (PCA) nie została poprawnie zainicjalizowana. Sprawdź logi konsoli.";
-    }
+    if (itemSubject) itemSubject.innerText = "PCA nie zostało zainicjalizowane. Sprawdź logi.";
     return;
   }
 
   const tokenRequest = { scopes: ["User.Read", "openid", "profile"] };
   let accessToken = null;
 
-  // 1) Silent (jeśli konto jest już w cache)
+  // 1) Silent
   try {
     const acc = pca.getAllAccounts()[0];
     if (acc) {
       const silentRes = await pca.acquireTokenSilent({ ...tokenRequest, account: acc });
       accessToken = silentRes.accessToken;
-      console.log("Token został pobrany w trybie cichym.");
+      d("Got access token (silent).");
     }
   } catch (error) {
-    console.log(`Nie udało się pobrać tokenu w trybie cichym: ${error}`);
+    d("Silent token failed", error);
   }
 
-  // 2) Popup (interaktywne logowanie w taskpane)
+  // 2) Popup
   if (!accessToken) {
     try {
-      const authResult = await pca.acquireTokenPopup(tokenRequest);
-      accessToken = authResult.accessToken;
-      console.log("Token został pobrany po interaktywnym logowaniu.");
-    } catch (popupError) {
-      console.log(`Nie udało się pobrać tokenu po interaktywnym logowaniu: ${popupError}`);
+      const popupRes = await pca.acquireTokenPopup(tokenRequest);
+      accessToken = popupRes.accessToken;
+      d("Got access token (popup).");
+    } catch (error) {
+      d("Popup token failed", error);
     }
   }
 
   if (!accessToken) {
-    console.error("Nie udało się uzyskać tokenu dostępu.");
     if (itemSubject) itemSubject.innerText = "Nie udało się zalogować. Spróbuj ponownie.";
     return;
   }
 
-  // 3) Pobierz profil z Graph
+  // 3) Graph /me
   const resp = await fetch(
-    "https://graph.microsoft.com/v1.0/me?$select=givenName,surname,mail,userPrincipalName,businessPhones,mobilePhone,jobTitle,department,officeLocation",
+    "https://graph.microsoft.com/v1.0/me?$select=givenName,surname,mail,userPrincipalName,businessPhones,mobilePhone,jobTitle,department,officeLocation,displayName",
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-
   if (!resp.ok) {
-    const errorText = await resp.text();
-    console.log("Wywołanie Microsoft Graph zakończone błędem: " + errorText);
-    if (itemSubject) itemSubject.innerText = "Nie udało się pobrać danych użytkownika z Microsoft Graph.";
+    const txt = await resp.text();
+    d("Graph /me failed", { status: resp.status, txt });
+    if (itemSubject) itemSubject.innerText = "Nie udało się pobrać danych z Microsoft Graph.";
     return;
   }
-
   const data = await resp.json();
+  d("Graph /me fetched", data);
 
-  // 4) Zbuduj obiekt profilu dla generatora HTML
+  // 4) Build profile & HTML
   const profile = {
     firstName: data.givenName || "",
     lastName: data.surname || "",
@@ -111,81 +108,95 @@ async function signInUser() {
     jobTitle: data.jobTitle || "",
     team: data.department || "",
     office: data.officeLocation || "",
+    displayName: data.displayName || `${data.givenName || ""} ${data.surname || ""}`.trim(),
   };
-
-  // 5) Budowa HTML (jeśli masz różne szablony dla reply/forward – podmień generatory odpowiednio)
   const html = buildSignatureHtml(profile);
+  d("Built signature HTML", { len: html?.length || 0 });
 
-  // 6) Podgląd w taskpane
+  // 5) Preview
   if (signaturePreview) {
     try {
       signaturePreview.srcdoc = html;
-      console.log("Podgląd stopki został wygenerowany.");
+      d("Preview updated.");
     } catch (e) {
-      console.log("Nie udało się wyrenderować podglądu stopki:", e);
+      d("Preview failed", e);
     }
   }
 
-  // 7) Komunikat o zalogowanym użytkowniku
+  // 6) UI info
   if (itemSubject) {
-    const name = [data.givenName, data.surname].filter(Boolean).join(" ") || data.displayName || "";
+    const name = profile.displayName || [profile.firstName, profile.lastName].filter(Boolean).join(" ");
     itemSubject.innerHTML = `Jesteś zalogowany jako <b>${name}</b>.`;
   }
 
-  // 8) Zapisz dane i gotowe HTML-e do pamięci (roamingSettings + localStorage) → Fallback dla event-runtime
+  // 7) Save to roamingSettings (used by event runtime)
   const disableClientSig = !!(chkOverrideClientSig && chkOverrideClientSig.checked);
-  await saveSignatureToStorage(profile, { html }, disableClientSig);
+  await saveSignatureToStorage(profile, html, disableClientSig);
 
-  // 9) Jednorazowo dodaj stopkę do aktualnie otwartej wiadomości (opcjonalnie)
+  // 8) Optional: insert into current item once
   try {
-    await insertSignatureFromTaskpane(profile, html);
-    console.log("Stopka została dodana po zalogowaniu (taskpane).");
+    await insertSignatureFromTaskpane(html);
+    d("Signature inserted from taskpane.");
   } catch (e) {
-    console.error("Błąd podczas dodawania stopki po zalogowaniu:", e);
+    d("Insert from taskpane failed", e);
   }
 }
 
-/* ===================== PAMIĘĆ / STORAGE ===================== */
-
-async function saveSignatureToStorage(profile, htmlSet, disableClientSig) {
+// ====== Storage save (roamingSettings + localStorage + sessionData flag) ======
+async function saveSignatureToStorage(profile, html, disableClientSig) {
   try {
-    // localStorage – dla Twojej wygody/podglądu (nie jest używane w evencie)
+    d("Saving to roamingSettings...", { hasHtml: !!html, htmlLen: html?.length || 0, profile });
+
+    // convenience
     localStorage.setItem("user_info", JSON.stringify(profile));
 
-    // roamingSettings – kluczowe: to czyta event-runtime (Desktop/OWA/Mac)
+    // critical for event runtime
     Office.context.roamingSettings.set("user_info", JSON.stringify(profile));
-    // GOTOWE HTML-e – event weźmie je, gdy nie ma tokenu albo nie wolno robić interakcji
-    Office.context.roamingSettings.set("signature_html", htmlSet.htmlNew);
-
-    // Wyłącz natywną stopkę klienta, jeśli chcesz (Desktop)
+    Office.context.roamingSettings.set("signature_html", html);
     Office.context.roamingSettings.set("override_olk_signature", disableClientSig ? "1" : "0");
 
     await new Promise((resolve) => {
-      Office.context.roamingSettings.saveAsync(() => resolve());
+      Office.context.roamingSettings.saveAsync((res) => {
+        d("roamingSettings.saveAsync", { status: res?.status, error: res?.error });
+        // toast
+        try {
+          Office.context.mailbox.item?.notificationMessages?.replaceAsync(
+            "sig_saved",
+            {
+              type: "informationalMessage",
+              message: "Podpis zapisany w pamięci dodatku.",
+              icon: "Icon.16x16",
+              persistent: false,
+            },
+            () => {}
+          );
+        } catch {}
+        resolve();
+      });
     });
 
-    // Mostek dla Desktop – zasygnalizuj event-runtime, że user jest „zalogowany/ustawiony”
+    // bridge for Desktop (optional, nice-to-have)
     if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.setAsync) {
       await new Promise((resolve) => {
         Office.sessionData.setAsync("isAuthenticated", "1", () => resolve());
       });
+      d("sessionData flag set (PC).");
     }
 
-    // Jeśli checkbox zaznaczony, spróbuj wyłączyć natywną stopkę dla bieżącego elementu
+    // Disable native signature on current item (optional)
     if (disableClientSig && Office.context.mailbox.item?.disableClientSignatureAsync) {
       Office.context.mailbox.item.disableClientSignatureAsync(() => {});
+      d("Client signature disabled on current item.");
     }
   } catch (e) {
-    console.warn("Nie udało się zapisać danych do pamięci dodatku:", e);
+    d("Error saving signature to storage", e);
   }
 }
 
-/* ===================== WSTAWIENIE STOPKI (taskpane) ===================== */
-
+// ====== Insert signature into current compose (taskpane action) ======
 function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
-
 async function ensureBodyReady(maxTries = 10, delayMs = 150) {
   for (let i = 0; i < maxTries; i++) {
     if (Office?.context?.mailbox?.item?.body) return;
@@ -194,35 +205,30 @@ async function ensureBodyReady(maxTries = 10, delayMs = 150) {
   throw new Error("Body nie jest gotowe do edycji.");
 }
 
-/** Dodaj stopkę z panelu taskpane do aktualnie otwartego elementu */
-async function insertSignatureFromTaskpane(profile, htmlNew) {
+async function insertSignatureFromTaskpane(html) {
   await ensureBodyReady();
   const item = Office.context.mailbox.item;
-  const sigHtml = htmlNew || buildSignatureHtml(profile);
 
   const isMessage = item.itemType === Office.MailboxEnums.ItemType.Message;
   const canUseSetSignature =
     typeof Office?.context?.requirements?.isSetSupported === "function" &&
-    Office.context.requirements.isSetSupported("Mailbox", "1.10");
+    Office.context.requirements.isSetSupported("Mailbox", "1.10") &&
+    item.body?.setSignatureAsync;
 
-  // Preferuj wstawienie jako „Signature” (podmienia dedykowaną sekcję podpisu)
-  if (isMessage && canUseSetSignature && item.body && item.body.setSignatureAsync) {
+  d("insertSignatureFromTaskpane method", { isMessage, canUseSetSignature });
+
+  if (isMessage && canUseSetSignature) {
     await new Promise((resolve, reject) => {
-      item.body.setSignatureAsync(sigHtml, { coercionType: Office.CoercionType.Html }, (res) =>
-        res.status === Office.AsyncResultStatus.Succeeded
-          ? resolve()
-          : reject(res.error || new Error("setSignatureAsync failed"))
+      item.body.setSignatureAsync(html, { coercionType: Office.CoercionType.Html }, (res) =>
+        res.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(res.error)
       );
     });
     return;
   }
 
-  // Fallback: wstaw HTML do treści (np. spotkania / starsze scenariusze)
   await new Promise((resolve, reject) => {
-    item.body.setAsync("<br/><br/>" + sigHtml, { coercionType: Office.CoercionType.Html }, (res) =>
-      res.status === Office.AsyncResultStatus.Succeeded
-        ? resolve()
-        : reject(res.error || new Error("body.setAsync failed"))
+    item.body.setAsync("<br/><br/>" + html, { coercionType: Office.CoercionType.Html }, (res) =>
+      res.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(res.error)
     );
   });
 }
