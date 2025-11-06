@@ -42,7 +42,8 @@ async function initializePCA() {
 async function getUserName() {
   await initializePCA();
 
-  const accountId = localStorage.getItem("msalAccountId");
+  const accountId = await OfficeRuntime.storage.getItem("msalAccountId");
+
   const accounts = pca.getAllAccounts();
   const account = accounts.find((acc) => acc.homeAccountId === accountId);
 
@@ -123,21 +124,43 @@ async function setSignature(event) {
   const item = Office.context.mailbox.item;
 
   try {
-    const profile = await getUserName(); // Twoja funkcja pobierająca dane z Graph
+    const profile = await getUserName(); // Pobierz dane użytkownika z Graph
     const signatureHtml = buildSignatureHtml(profile);
 
-    item.body.setSignatureAsync(
-      signatureHtml,
-      { asyncContext: event, coercionType: Office.CoercionType.Html },
-      (result) => {
-        if (result.status === Office.AsyncResultStatus.Failed) {
-          console.error("Błąd dodania stopki:", result.error.message);
-        } else {
-          console.log("Stopka dodana poprawnie.");
+    const isMessage = item.itemType === Office.MailboxEnums.ItemType.Message;
+    const canUseSetSignature =
+      typeof Office?.context?.requirements?.isSetSupported === "function" &&
+      Office.context.requirements.isSetSupported("Mailbox", "1.10");
+
+    // Preferowane: nowoczesne API setSignatureAsync
+    if (isMessage && canUseSetSignature && item.body?.setSignatureAsync) {
+      item.body.setSignatureAsync(
+        signatureHtml,
+        { asyncContext: event, coercionType: Office.CoercionType.Html },
+        (result) => {
+          if (result.status === Office.AsyncResultStatus.Failed) {
+            console.error("Błąd dodania stopki (setSignatureAsync):", result.error.message);
+          } else {
+            console.log("Stopka dodana poprawnie (setSignatureAsync).");
+          }
+          event.completed();
         }
-        event.completed();
-      }
-    );
+      );
+    } else {
+      // Fallback: wstawienie HTML do treści wiadomości/spotkania
+      item.body.setAsync(
+        "<br/><br/>" + signatureHtml,
+        { coercionType: Office.CoercionType.Html, asyncContext: event },
+        (result) => {
+          if (result.status === Office.AsyncResultStatus.Failed) {
+            console.error("Błąd dodania stopki (setAsync):", result.error.message);
+          } else {
+            console.log("Stopka dodana poprawnie (setAsync).");
+          }
+          event.completed();
+        }
+      );
+    }
   } catch (error) {
     console.error("Nie udało się ustawić stopki:", error);
     notifyUserToSignIn();

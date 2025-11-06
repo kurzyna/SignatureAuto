@@ -51,7 +51,7 @@ async function signInUser() {
     const authResult = await pca.acquireTokenSilent(tokenRequest);
     const account = pca.getAllAccounts()[0];
     if (account) {
-      localStorage.setItem("msalAccountId", account.homeAccountId);
+      await OfficeRuntime.storage.setItem("msalAccountId", account.homeAccountId);
     }
     accessToken = authResult.accessToken;
     console.log("Token został pobrany w trybie cichym.");
@@ -65,7 +65,7 @@ async function signInUser() {
       const authResult = await pca.acquireTokenPopup(tokenRequest);
       const account = pca.getAllAccounts()[0];
       if (account) {
-        localStorage.setItem("msalAccountId", account.homeAccountId);
+        await OfficeRuntime.storage.setItem("msalAccountId", account.homeAccountId);
       }
 
       accessToken = authResult.accessToken;
