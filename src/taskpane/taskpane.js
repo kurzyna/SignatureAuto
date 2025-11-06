@@ -196,7 +196,7 @@ async function saveSignatureToStorage(profile, html, disableClientSig) {
           Office.context.mailbox.item?.notificationMessages?.replaceAsync(
             "sig_saved",
             {
-              type: "informationalMessage",
+              type: "insightMessage",
               message: "Podpis zapisany w pamięci dodatku.",
               icon: "Icon.16x16",
               persistent: false,
