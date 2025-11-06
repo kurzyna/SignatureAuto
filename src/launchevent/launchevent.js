@@ -1,7 +1,7 @@
 /* global console, fetch, Office */
 import { createNestablePublicClientApplication } from "@azure/msal-browser";
 import { auth } from "./authconfig"; // { clientId, authority }
-import { buildSignatureHtml } from "../common/signature";
+import { buildSignatureHtml } from "../common/signature"; // Twój generator HTML z signature.js
 
 let pca;
 let isPCAInitialized = false;
@@ -14,14 +14,14 @@ const d = (msg, obj) => {
   else console.log(`${LOG_PREFIX} ${ts} ${msg}`);
 };
 
-// Mały baner z informacją, którą ścieżką poszło
+// Mały baner z informacją, którą ścieżką poszło + dodatkowe info
 function showPath(tag, extra = "") {
   try {
     Office.context.mailbox.item.notificationMessages.replaceAsync(
       "sig_path",
       {
         type: "informationalMessage",
-        message: `Signature path: ${tag}${extra ? ` (${extra})` : ""}`,
+        message: `evt: ${tag}${extra ? ` (${extra})` : ""}`,
         icon: "Icon.16x16",
         persistent: false,
       },
@@ -52,7 +52,7 @@ function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function ensureComposeReady(maxTries = 20, delayMs = 200) {
+async function ensureComposeReady(maxTries = 30, delayMs = 200) {
   const item = Office?.context?.mailbox?.item;
   for (let i = 0; i < maxTries; i++) {
     if (item?.body) {
@@ -86,7 +86,7 @@ function notifyUserToSignIn() {
 
 // ====== Roaming/session storage helpers ======
 async function getSignatureHtmlPreferSession() {
-  // jeśli kiedyś sessionData będzie dostępne – najpierw spróbujmy tam
+  // Jeśli kiedyś sessionData będzie dostępne w Classic — najpierw spróbujmy tam (u Ciebie dziś: false)
   if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.getAsync) {
     const sessionHtml = await new Promise((resolve) =>
       Office.sessionData.getAsync("signature_html", (r) => resolve(r?.value || null))
@@ -161,7 +161,7 @@ async function getProfileFromGraph() {
   };
 }
 
-// ====== Insert signature into item (with readiness + retry) ======
+// ====== Insert signature into item (with readiness + retry + verify) ======
 async function insertHtmlSignatureWithRetry(html, event) {
   await ensureComposeReady(); // KLUCZOWE na Classic
 
@@ -188,6 +188,7 @@ async function insertHtmlSignatureWithRetry(html, event) {
       );
     });
 
+  // próba 1 + ewentualny retry
   try {
     if (isMessage && canUseSetSignature) {
       await insertViaSignatureApi();
@@ -198,7 +199,7 @@ async function insertHtmlSignatureWithRetry(html, event) {
     }
   } catch (e1) {
     d("1st insert attempt failed, retrying once…", e1);
-    await wait(250); // krótka przerwa i ponów
+    await wait(300);
     try {
       if (isMessage && canUseSetSignature) {
         await insertViaSignatureApi();
@@ -210,14 +211,15 @@ async function insertHtmlSignatureWithRetry(html, event) {
     } catch (e2) {
       d("2nd insert attempt failed", e2);
     }
-  } finally {
-    event.completed();
   }
+
+  event.completed();
 }
 
 // ====== Main event handler ======
 async function setSignature(event) {
   try {
+    showPath("evt-start");
     d("Event start", {
       platform: Office.context.platform,
       itemType: Office.context.mailbox.item?.itemType,
@@ -273,7 +275,7 @@ async function setSignature(event) {
   }
 }
 
-// ====== Event hooks (must match manifest LaunchEvent) ======
+// ====== Event hooks (muszą pasować do manifestu LaunchEvent) ======
 function onNewMessageComposeHandler(event) {
   setSignature(event);
 }
