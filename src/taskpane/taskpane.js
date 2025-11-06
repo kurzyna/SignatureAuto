@@ -49,10 +49,6 @@ async function signInUser() {
   // 1) Silent
   try {
     const authResult = await pca.acquireTokenSilent(tokenRequest);
-    const account = pca.getAllAccounts()[0];
-    if (account) {
-      await OfficeRuntime.storage.setItem("msalAccountId", account.homeAccountId);
-    }
     accessToken = authResult.accessToken;
     console.log("Token został pobrany w trybie cichym.");
   } catch (error) {
@@ -63,11 +59,6 @@ async function signInUser() {
   if (!accessToken) {
     try {
       const authResult = await pca.acquireTokenPopup(tokenRequest);
-      const account = pca.getAllAccounts()[0];
-      if (account) {
-        await OfficeRuntime.storage.setItem("msalAccountId", account.homeAccountId);
-      }
-
       accessToken = authResult.accessToken;
       console.log("Token został pobrany po interaktywnym logowaniu.");
     } catch (popupError) {
@@ -84,7 +75,7 @@ async function signInUser() {
   // 3) Graph: pobierz potrzebne pola do stopki
   const resp = await fetch(
     "https://graph.microsoft.com/v1.0/me?$select=givenName,surname,mail,userPrincipalName,businessPhones,mobilePhone,jobTitle,department,officeLocation",
-    { headers: { Authorization: accessToken } } // nie zmieniamy schematu zgodnie z Twoją prośbą
+    { headers: { Authorization: `Bearer ${accessToken}` } } // nie zmieniamy schematu zgodnie z Twoją prośbą
   );
 
   if (!resp.ok) {
