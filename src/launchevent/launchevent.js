@@ -3,6 +3,7 @@ import { createNestablePublicClientApplication } from "@azure/msal-browser";
 import { auth } from "./authconfig";
 import { buildSignatureHtml } from "../common/signature";
 
+const FORCE_NO_DATA = false; // ustaw na true, żeby natychmiast zobaczyć monit
 let pca;
 let isPCAInitialized = false;
 
@@ -59,13 +60,15 @@ function get_command_id() {
 }
 
 async function notifyUserToSignIn() {
-  // dopilnuj, że edytor compose już „wstał”
   try {
     await ensureComposeReady();
-  } catch {}
+  } catch {} // upewnij się, że compose już działa
 
   const item = Office?.context?.mailbox?.item;
-  if (!item?.notificationMessages) return;
+  if (!item?.notificationMessages) {
+    d("notify: notificationMessages not ready");
+    return;
+  }
 
   const key = "sign_in_needed";
   const msg = "Zaloguj się w panelu dodatku, aby automatycznie wstawić stopkę e-mail.";
@@ -73,24 +76,40 @@ async function notifyUserToSignIn() {
     actionType: "showTaskPane",
     actionText: "Zaloguj",
     commandId: get_command_id(),
-    contextData: "{}", // poprawny JSON
+    contextData: "{}",
   };
 
-  // jeden insight na add-in → replaceAsync z jednym kluczem
-  item.notificationMessages.replaceAsync(
-    key,
-    { type: "insightMessage", message: msg, icon: "Icon.16x16", actions: [action] },
-    (res) => {
-      if (res?.status !== Office.AsyncResultStatus.Succeeded) {
-        // fallback — działa wszędzie (bez custom ikony w OWA)
+  await new Promise((resolve) => {
+    try {
+      item.notificationMessages.replaceAsync(
+        key,
+        { type: "insightMessage", message: msg, icon: "Icon.16x16", actions: [action] },
+        (res) => {
+          d("notify insight result", res?.status);
+          if (res?.status === Office.AsyncResultStatus.Succeeded) return resolve();
+          try {
+            item.notificationMessages.replaceAsync(
+              key,
+              { type: "informationalMessage", message: msg, icon: "Icon.16x16", persistent: false },
+              () => resolve()
+            );
+          } catch {
+            resolve();
+          }
+        }
+      );
+    } catch {
+      try {
         item.notificationMessages.replaceAsync(
           key,
           { type: "informationalMessage", message: msg, icon: "Icon.16x16", persistent: false },
-          () => {}
+          () => resolve()
         );
+      } catch {
+        resolve();
       }
     }
-  );
+  });
 }
 
 // ====== Odczyty z cache ======
@@ -230,41 +249,69 @@ async function setSignature(event) {
       itemType: Office.context.mailbox.item?.itemType,
     });
 
-    // 1) CACHE FIRST
-    const cachedHtml = await getSignatureHtmlPreferSession();
-    if (cachedHtml) {
+    // ZAWSZE upewnij się, że compose jest gotowy (w Classic bywa za wcześnie)
+    try {
+      await ensureComposeReady();
+    } catch (e) {
+      d("ensureComposeReady err (non-fatal)", e);
+    }
+
+    // TEST: wymuś brak danych, żeby sprawdzić monit
+    if (FORCE_NO_DATA) {
+      d("FORCE_NO_DATA = true -> notify & end");
+      await notifyUserToSignIn();
+      event.completed();
+      return;
+    }
+
+    // 1) CACHE
+    let cachedHtml = await getSignatureHtmlPreferSession();
+    const hasCache = !!(cachedHtml && cachedHtml.length > 0);
+    d("decision: hasCache", hasCache);
+
+    if (hasCache) {
       await insertHtmlSignatureWithRetry(cachedHtml, event); // kończy event wewnątrz
       return;
     }
 
-    // 2) Graph (silent) → świeży HTML
+    // 2) GRAPH (silent)
+    let freshHtml = null;
     try {
       const profile = await getProfileFromGraph();
-      const freshHtml = buildSignatureHtml(profile);
+      freshHtml = buildSignatureHtml(profile);
+    } catch (silentErr) {
+      d("Silent/Graph failed", { msg: silentErr?.message });
+    }
+    const hasGraph = !!(freshHtml && freshHtml.length > 0);
+    d("decision: hasGraph", hasGraph);
+
+    if (hasGraph) {
       await insertHtmlSignatureWithRetry(freshHtml, event); // kończy event wewnątrz
       return;
-    } catch (silentErr) {
-      d("Silent/Graph path failed", { msg: silentErr?.message, err: silentErr });
     }
 
-    // 3) Fallback: user_info (zapisane przez taskpane)
+    // 3) USER INFO
     const userInfo = getRoamingUserInfo();
-    if (userInfo) {
-      const built = buildSignatureHtml(userInfo);
-      if (built) {
-        await insertHtmlSignatureWithRetry(built, event); // kończy event wewnątrz
-        return;
-      }
+    let userInfoHtml = userInfo ? buildSignatureHtml(userInfo) : "";
+    const hasUserInfo = !!(userInfoHtml && userInfoHtml.length > 0);
+    d("decision: hasUserInfo", hasUserInfo);
+
+    if (hasUserInfo) {
+      await insertHtmlSignatureWithRetry(userInfoHtml, event); // kończy event wewnątrz
+      return;
     }
 
-    // 4) NIC nie mamy → pokaż *twardy* monit i zakończ event
+    // 4) NIC nie mamy → pokaż monit i ZARAZ potem zakończ event
     d("no data -> notifyUserToSignIn()");
-    await notifyUserToSignIn(); // poczekaj aż spróbuje dodać notyfikację
+    await notifyUserToSignIn(); // ważne: czekamy, aż spróbuje dodać notyfikację
     event.completed();
     return;
   } catch (e) {
     d("Event handler failed (outer catch)", e);
-    await notifyUserToSignIn();
+    // awaryjnie pokaż monit i domknij event
+    try {
+      await notifyUserToSignIn();
+    } catch {}
     event.completed();
     return;
   }
