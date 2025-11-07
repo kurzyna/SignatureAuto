@@ -1,0 +1,7 @@
+{
+  "allowed": [
+    "https://localhost:3000/launchevent.js",
+    "https://kurzyna.github.io/SignatureAuto/test/launchevent.js",
+    "https://kurzyna.github.io"
+  ]
+}
