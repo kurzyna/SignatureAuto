@@ -321,10 +321,10 @@ async function setSignature(event) {
 function onNewMessageComposeHandler(event) {
   setSignature(event);
 }
-function onNewAppointmentComposeHandler(event) {
-  setSignature(event);
-}
+// function onNewAppointmentComposeHandler(event) {
+//   setSignature(event);
+// }
 
 Office.onReady(() => {});
 Office.actions.associate("onNewMessageComposeHandler", onNewMessageComposeHandler);
-Office.actions.associate("onNewAppointmentComposeHandler", onNewAppointmentComposeHandler);
+// Office.actions.associate("onNewAppointmentComposeHandler", onNewAppointmentComposeHandler);
