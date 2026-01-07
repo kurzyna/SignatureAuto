@@ -79,28 +79,6 @@
               </OfficeTab>
             </ExtensionPoint>
 
-            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
-              <OfficeTab id="TabDefault">
-                <Group id="aocsG0">
-                  <Label resid="residGL0"/>
-                  <Control xsi:type="Button" id="MRCS_TpBtn1">
-                    <Label resid="residStr0"/>
-                    <Supertip>
-                      <Title resid="residStr0"/>
-                      <Description resid="residTT0"/>
-                    </Supertip>
-                    <Icon>
-                      <bt:Image size="16" resid="Icon.16x16" />
-                      <bt:Image size="32" resid="Icon.16x16" />
-                      <bt:Image size="80" resid="Icon.16x16" />
-                    </Icon>
-                    <Action xsi:type="ShowTaskpane">
-                      <SourceLocation resid="Taskpane.Url"/>
-                    </Action>
-                  </Control>
-                </Group>
-              </OfficeTab>
-            </ExtensionPoint>
                     </DesktopFormFactor>
       </Host>
     </Hosts>
@@ -173,28 +151,6 @@
               </OfficeTab>
             </ExtensionPoint>
 
-            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
-              <OfficeTab id="TabDefault">
-                <Group id="aocsG0">
-                  <Label resid="residGL0"/>
-                  <Control xsi:type="Button" id="MRCS_TpBtn1">
-                    <Label resid="residStr0"/>
-                    <Supertip>
-                      <Title resid="residStr0"/>
-                      <Description resid="residTT0"/>
-                    </Supertip>
-                    <Icon>
-                      <bt:Image size="16" resid="Icon.16x16" />
-                      <bt:Image size="32" resid="Icon.16x16" />
-                      <bt:Image size="80" resid="Icon.16x16" />
-                    </Icon>
-                    <Action xsi:type="ShowTaskpane">
-                      <SourceLocation resid="Taskpane.Url"/>
-                    </Action>
-                  </Control>
-                </Group>
-              </OfficeTab>
-            </ExtensionPoint>
 
          
 
