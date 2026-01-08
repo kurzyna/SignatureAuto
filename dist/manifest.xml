@@ -7,14 +7,14 @@
   xsi:type="MailApp">
 
   <Id>cf06154b-60ae-4c9b-9a02-56a012d14b44</Id>
-  <Version>1.6</Version>
+  <Version>1.7</Version>
   <ProviderName>AKMF</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Stopka AKMF"/>
   <Description DefaultValue="Dodaj stopkę"/>
 <IconUrl DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
   <HighResolutionIconUrl DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
-  <SupportUrl DefaultValue="https://www.contoso.com/help"/>
+  <SupportUrl DefaultValue="https://www.akmf.pl"/>
   <AppDomains>
     <AppDomain>https://kurzyna.github.io</AppDomain>
     <AppDomain>https://www.akmf.pl</AppDomain>
@@ -79,6 +79,28 @@
               </OfficeTab>
             </ExtensionPoint>
 
+            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="aocsG0">
+                  <Label resid="residGL0"/>
+                  <Control xsi:type="Button" id="MRCS_TpBtn1">
+                    <Label resid="residStr0"/>
+                    <Supertip>
+                      <Title resid="residStr0"/>
+                      <Description resid="residTT0"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16" />
+                      <bt:Image size="32" resid="Icon.16x16" />
+                      <bt:Image size="80" resid="Icon.16x16" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
                     </DesktopFormFactor>
       </Host>
     </Hosts>
@@ -151,6 +173,28 @@
               </OfficeTab>
             </ExtensionPoint>
 
+            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="aocsG0">
+                  <Label resid="residGL0"/>
+                  <Control xsi:type="Button" id="MRCS_TpBtn1">
+                    <Label resid="residStr0"/>
+                    <Supertip>
+                      <Title resid="residStr0"/>
+                      <Description resid="residTT0"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16" />
+                      <bt:Image size="32" resid="Icon.16x16" />
+                      <bt:Image size="80" resid="Icon.16x16" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
 
          
 
@@ -160,6 +204,7 @@
           <ExtensionPoint xsi:type="LaunchEvent">
             <LaunchEvents>
               <LaunchEvent Type="OnNewMessageCompose" FunctionName="onNewMessageComposeHandler"/>
+              <LaunchEvent Type="OnNewAppointmentOrganizer" FunctionName="onNewAppointmentComposeHandler"/>
             </LaunchEvents>
             <!-- Identifies the runtime to be used (also referenced by the Runtime element). -->
             <SourceLocation resid="WebViewRuntime.Url"/>

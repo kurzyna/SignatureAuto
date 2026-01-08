@@ -1,4 +1,4 @@
-export function buildSignatureHtml(profile) {
+export function buildSignatureHtml(profile, options = {}) {
   const {
     firstName = "",
     lastName = "",
@@ -8,6 +8,11 @@ export function buildSignatureHtml(profile) {
     team = "",
     office = "",
   } = profile || {};
+
+  const addGreeting = !!options.addGreeting; // NEW
+  const greetingHtml = addGreeting
+    ? `<div style="font-family:'Poppins','Segoe UI',Arial,Helvetica,sans-serif; color:#000000 !important; font-size:12pt; margin-bottom:8px;">Pozdrawiam serdecznie,</div>`
+    : ""; // NEW
 
   let linkedin =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFQAAABUCAYAAAAcaxDBAAAACXBIWXMAACxLAAAsSwGlPZapAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAS/SURBVHgB7Z1fTFtVHMe/59a4h24dW3Qs2UgK7GUbcbxp0GQ1oejeHJKgJho1WdxexETmkwQWEl+GD+iD6B7Q+DBJlGGi8Q8Y4YXoi4Jh6MtKzfbQ6ZKVQh+2ZL07v8vaFFa6c3t+LLnc3ycplNtD03z6u+f3O+f09ihU4bF4e0LBfUFBHVcKcX2oDuEkCxdzBbjzLtTEjfTU9GYNVaWDJDIC9OtHExAq4KYLrnPy//Tk3MZHIhsP7Iu39zsKn2MtIoWKqDp9xp6O1jUhn03NlD+yTui+puSoDtl3IBihpSaiexvj+ZtL3xaPlYRSZIpM/+j80loeqV4f+ng82eoo908INaNcPJvRycqhPxxVuATBClfpJK5RXkZX+BWCNRSlTkTXmRBYuKNd6lNeHYPAgoJz3NE/WyHwoNw4JaWwDifZ0SVTnQOBFRHKjAhlRoQy8wiYaDhQj1NvnMSJjmfQcLAeudwqFhavYOybn71bWGAR2v1iBwb7ziAW21k6Rvfbnjrm3Uj20EdfIgxEdu5pGoAFJGv84ofYsePRTduQ1GUdsX/M/YPtjnUf2tvzqlG7l3QUhwFroRR9Jhw9csjrW7c71kIbDu43b3tAhD4QyuamLK/ksd2xFrrw9xWjdlevXcflRbO2QcZa6NCwWTk09vVPCAPWZRNFHs2zVEtOVOCf7vkAYcBaKDH7+7wntkVn8t1lxX0ul8fHI2N4r28Yt27dRhhQ9Y3tLhhpOdLsjZKKQ8+wwTaWLxJGieXIbBMzIpQZ61O+7cknjNsuLKaQW1nd0uchYrui3jC3mCBpYoaSZu4hDCysk1ImNWnctvPld3VF8NeWPA+9Ic8n20rzsZW4ei2D2d/mvfnZzV6HLexJ6WFD8wPD588aTdLQvEN3F92e8+TSoIR78jvQfWjL4Wb88v2I8YxXOSSX3ojB98+Ak8AKJZnjF4fWrRLUwqk3OzH13Yjud+2ep0gghVJ0jX46YC2zCA1GaAmHg0AK7e15zdc8rAndXR3eIqMtAY3QrZmopjfK9tSXwr4Mqlu7u5KwQYRu4ETyadgQ+DqUpgg/Gx3HZb1ysHxvOYYqAOoTj+rffvE+R6C7lLV5Xv8EWuiPk7N4++z5+9a1aDREkit9AMMEGnFdGK3tsoPAnvIk8/W3+qsuEtIoqPOVXviFyqhaCazQvsFPjNrR/KzpuleRlsOHUCuBFEqRR2NxUy7o09/PcncsFkWtBFOozxVUSlY/6C7CFJsRWGjKJj+fCdgtQh9MrWWQX0IjdHnFvA+1QUZKzIhQZkQoMyKUGRHKjAhlRoQyI0KZEaHMiFBmRCgzIpQZEcqMCGVGhDIjQpkRocyIUGZEKDMilBn2SxPDjkQoMyKUGRKahcCC7juzJDQNgQUFzDtw3RkILBRcd85RUBMQWIhol9732OvSib4lPAHBApW+vjTZ6GV55eIcBCsKLryrxrytK1azqfSuvU0UrQkIvlEK5/5bmvqK7pf2Alm9mZqO7mlu1FblW8N9oHPQF5mlqdIeKut2q8lnUxMSqeZQZJbL9I5Vari22Qou6VI1DqESMzrvDGQq7Pylqv3X/nh7wtuOQSnqBugq//BuoQb3X514pqk0ylTZQu0uOTdo2VpJWRYAAAAASUVORK5CYII=";
@@ -22,6 +27,7 @@ export function buildSignatureHtml(profile) {
 
   return `
 
+${greetingHtml}<!-- NEW: optional greeting inserted here -->
 <!--[if mso]>
 <style>
   /* Outlook (Word) – wyłącz podkreślenia i wymuś kolor */

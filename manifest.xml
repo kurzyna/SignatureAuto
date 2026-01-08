@@ -7,14 +7,14 @@
   xsi:type="MailApp">
 
   <Id>cf06154b-60ae-4c9b-9a02-56a012d14b44</Id>
-  <Version>1.6</Version>
+  <Version>1.7</Version>
   <ProviderName>AKMF</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Stopka AKMF"/>
   <Description DefaultValue="Dodaj stopkę"/>
 <IconUrl DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
   <HighResolutionIconUrl DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
-  <SupportUrl DefaultValue="https://www.contoso.com/help"/>
+  <SupportUrl DefaultValue="https://www.akmf.pl"/>
   <AppDomains>
     <AppDomain>https://kurzyna.github.io</AppDomain>
     <AppDomain>https://www.akmf.pl</AppDomain>

@@ -269,6 +269,82 @@ async function setSignature(event) {
     const hasCache = !!(cachedHtml && cachedHtml.length > 0);
     d("decision: hasCache", hasCache);
 
+    // If cache exists but user requested greeting, ensure cache contains it.
+    // If not, try to rebuild signature_html with greeting and persist it so event uses updated version.
+    if (hasCache) {
+      let addGreetingFlag = false;
+      try {
+        addGreetingFlag = Office.context.roamingSettings.get("add_greeting") === "1";
+      } catch (e) {
+        d("roamingSettings read add_greeting error (non-fatal)", e);
+      }
+
+      if (addGreetingFlag && !cachedHtml.includes("Pozdrawiam serdecznie")) {
+        d("Cache missing greeting -> attempt rebuild with greeting.");
+        let rebuilt = null;
+
+        // Try user_info from roamingSettings (preferred) or localStorage
+        try {
+          const raw =
+            Office.context.roamingSettings.get("user_info") ||
+            (typeof localStorage !== "undefined" && localStorage.getItem("user_info"));
+          if (raw) {
+            try {
+              const userInfo = typeof raw === "string" ? JSON.parse(raw) : raw;
+              rebuilt = buildSignatureHtml(userInfo, { addGreeting: true });
+            } catch (e) {
+              d("parse user_info failed (non-fatal)", e);
+            }
+          }
+        } catch (e) {
+          d("read user_info failed (non-fatal)", e);
+        }
+
+        // If no userInfo, try silent Graph fetch (may fail)
+        if (!rebuilt) {
+          try {
+            const profile = await getProfileFromGraph();
+            rebuilt = buildSignatureHtml(profile, { addGreeting: true });
+          } catch (e) {
+            d("rebuild from Graph failed (non-fatal)", e);
+          }
+        }
+
+        // Persist rebuilt HTML so future events use it
+        if (rebuilt) {
+          cachedHtml = rebuilt;
+          try {
+            Office.context.roamingSettings.set("signature_html", cachedHtml);
+            await new Promise((resolve) =>
+              Office.context.roamingSettings.saveAsync((res) => {
+                d("roamingSettings.saveAsync (signature_html rebuilt)", { status: res?.status, error: res?.error });
+                resolve();
+              })
+            );
+          } catch (e) {
+            d("roamingSettings save signature_html error (non-fatal)", e);
+          }
+
+          try {
+            if (typeof localStorage !== "undefined") localStorage.setItem("signature_html", cachedHtml);
+          } catch (e) {
+            d("localStorage set signature_html error (non-fatal)", e);
+          }
+
+          try {
+            if (Office.context.platform === Office.PlatformType.PC && Office.sessionData?.setAsync) {
+              Office.sessionData.setAsync("signature_html", cachedHtml, () => {
+                d("sessionData set signature_html (bridge)");
+              });
+            }
+          } catch (e) {
+            d("sessionData set signature_html error (non-fatal)", e);
+          }
+        } else {
+          d("Rebuild failed; will use existing cache without greeting.");
+        }
+      }
+    }
     if (hasCache) {
       await insertHtmlSignatureWithRetry(cachedHtml, event); // kończy event wewnątrz
       return;
@@ -278,7 +354,14 @@ async function setSignature(event) {
     let freshHtml = null;
     try {
       const profile = await getProfileFromGraph();
-      freshHtml = buildSignatureHtml(profile);
+      // read roamingSettings flag (event runtime)
+      let addGreeting = false;
+      try {
+        addGreeting = Office.context.roamingSettings.get("add_greeting") === "1";
+      } catch (e) {
+        d("roamingSettings read add_greeting error (non-fatal)", e);
+      }
+      freshHtml = buildSignatureHtml(profile, { addGreeting }); // pass option
     } catch (silentErr) {
       d("Silent/Graph failed", { msg: silentErr?.message });
     }
@@ -292,7 +375,13 @@ async function setSignature(event) {
 
     // 3) USER INFO
     const userInfo = getRoamingUserInfo();
-    let userInfoHtml = userInfo ? buildSignatureHtml(userInfo) : "";
+    let addGreetingFromRoaming = false;
+    try {
+      addGreetingFromRoaming = Office.context.roamingSettings.get("add_greeting") === "1";
+    } catch (e) {
+      d("roamingSettings read add_greeting error (non-fatal)", e);
+    }
+    let userInfoHtml = userInfo ? buildSignatureHtml(userInfo, { addGreeting: addGreetingFromRoaming }) : "";
     const hasUserInfo = !!(userInfoHtml && userInfoHtml.length > 0);
     d("decision: hasUserInfo", hasUserInfo);
 
