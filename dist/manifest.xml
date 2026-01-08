@@ -7,7 +7,7 @@
   xsi:type="MailApp">
 
   <Id>cf06154b-60ae-4c9b-9a02-56a012d14b44</Id>
-  <Version>1.9</Version>
+  <Version>2.0</Version>
   <ProviderName>AKMF</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Stopka AKMF"/>
