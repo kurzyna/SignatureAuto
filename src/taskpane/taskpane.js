@@ -28,6 +28,27 @@ const MSAL_CONFIG = {
   cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false },
 };
 
+// NEW: helpers do szybkiego wstawiania/usuwania pozdrowienia w HTML (używane dla preview)
+function addGreetingToHtml(html) {
+  const greetingHtml = `<div style="font-family:'Poppins','Segoe UI',Arial,Helvetica,sans-serif; color:#000000 !important; font-size:12pt; margin-bottom:8px;">Pozdrawiam serdecznie,</div>`;
+  try {
+    // if signature container exists, insert before it
+    const idx = html.indexOf('<div id="akmf-sig"');
+    if (idx !== -1) return html.slice(0, idx) + greetingHtml + html.slice(idx);
+    // otherwise just prepend
+    return greetingHtml + html;
+  } catch {
+    return greetingHtml + html;
+  }
+}
+function removeGreetingFromHtml(html) {
+  try {
+    return html.replace(/<div[^>]*>\s*Pozdrawiam serdecznie,?\s*<\/div>/i, "");
+  } catch {
+    return html;
+  }
+}
+
 Office.onReady(async (info) => {
   if (info.host !== Office.HostType.Outlook) return;
 
@@ -51,16 +72,45 @@ Office.onReady(async (info) => {
     d("roamingSettings read add_greeting error (non-fatal)", e);
   }
 
-  // show existing saved signature in preview (if present)
+  // show existing saved signature in preview (if present) — but adapt preview to checkbox state
   try {
-    const existingSig =
+    let existingSig =
       Office.context.roamingSettings.get("signature_html") || localStorage.getItem("signature_html") || null;
     if (existingSig && signaturePreview) {
+      // if checkbox requests greeting, ensure preview contains it (try rebuild from user_info first)
       try {
-        signaturePreview.srcdoc = existingSig;
-        d("Preview loaded from storage.");
+        const wantsGreeting = !!(chkGreeting && chkGreeting.checked);
+        let previewHtml = existingSig;
+
+        if (wantsGreeting && !previewHtml.includes("Pozdrawiam serdecznie")) {
+          // try rebuild from stored user_info
+          let rebuilt = null;
+          try {
+            const raw = localStorage.getItem("user_info") || Office.context.roamingSettings.get("user_info");
+            if (raw) {
+              const profile = typeof raw === "string" ? JSON.parse(raw) : raw;
+              rebuilt = buildSignatureHtml(profile, { addGreeting: true });
+            }
+          } catch (e) {
+            d("parse user_info for preview rebuild failed (non-fatal)", e);
+          }
+          // if we rebuilt, use it; otherwise insert greeting only for preview
+          previewHtml = rebuilt || addGreetingToHtml(previewHtml);
+        } else if (!wantsGreeting && previewHtml.includes("Pozdrawiam serdecznie")) {
+          previewHtml = removeGreetingFromHtml(previewHtml);
+        }
+
+        try {
+          signaturePreview.srcdoc = previewHtml;
+          d("Preview loaded from storage (adjusted for checkbox).");
+        } catch (e) {
+          d("Preview load failed", e);
+        }
       } catch (e) {
-        d("Preview load failed", e);
+        d("adjust preview for greeting failed (non-fatal)", e);
+        try {
+          signaturePreview.srcdoc = existingSig;
+        } catch {}
       }
     }
   } catch (e) {
@@ -104,7 +154,8 @@ Office.onReady(async (info) => {
         d("sessionData set add_greeting error (non-fatal)", e);
       }
 
-      // NEW: regenerate signature_html (if we have saved profile) and save it so event runtime uses updated HTML
+      // NEW: jeśli mamy profile -> regeneruj i zapisz (istniejąca logika)
+      //       jeśli nie mamy profile -> tylko zaktualizuj preview na podstawie istniejącego signature_html
       try {
         let profile = null;
         try {
@@ -163,10 +214,35 @@ Office.onReady(async (info) => {
             d("regenerate signature_html error (non-fatal)", e);
           }
         } else {
-          d("No user_info found; not regenerating signature_html.");
+          // no profile -> adjust preview only by inserting/removing greeting from the existing signature_html
+          try {
+            let existingSig =
+              Office.context.roamingSettings.get("signature_html") || localStorage.getItem("signature_html") || "";
+            if (existingSig) {
+              let previewHtml = chkGreeting.checked
+                ? addGreetingToHtml(existingSig)
+                : removeGreetingFromHtml(existingSig);
+              if (signaturePreview) {
+                try {
+                  signaturePreview.srcdoc = previewHtml;
+                  d("Preview updated (no profile).");
+                } catch (e) {
+                  d("preview update failed (no profile)", e);
+                }
+              }
+              // optionally update localStorage preview copy (do not overwrite roaming signature unless you want persistent change)
+              try {
+                localStorage.setItem("signature_html", previewHtml);
+              } catch (e) {
+                d("localStorage set signature_html error (non-fatal)", e);
+              }
+            }
+          } catch (e) {
+            d("update preview (no profile) failed (non-fatal)", e);
+          }
         }
       } catch (e) {
-        d("error in regenerate block (non-fatal)", e);
+        d("error in regenerate/update-preview block (non-fatal)", e);
       }
     });
   }
