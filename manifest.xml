@@ -12,9 +12,9 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Stopka AKMF"/>
   <Description DefaultValue="Dodaj stopkę"/>
-<IconUrl DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
-  <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
-  <SupportUrl DefaultValue="https://www.akmf.pl"/>
+<IconUrl DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
+  <HighResolutionIconUrl DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
+  <SupportUrl DefaultValue="https://www.contoso.com/help"/>
   <AppDomains>
     <AppDomain>https://kurzyna.github.io</AppDomain>
     <AppDomain>https://www.akmf.pl</AppDomain>
@@ -31,7 +31,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://localhost:3000/taskpane.html"/>
+        <SourceLocation DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/taskpane.html"/>
         <RequestedHeight>250</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -79,42 +79,20 @@
               </OfficeTab>
             </ExtensionPoint>
 
-            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
-              <OfficeTab id="TabDefault">
-                <Group id="aocsG0">
-                  <Label resid="residGL0"/>
-                  <Control xsi:type="Button" id="MRCS_TpBtn1">
-                    <Label resid="residStr0"/>
-                    <Supertip>
-                      <Title resid="residStr0"/>
-                      <Description resid="residTT0"/>
-                    </Supertip>
-                    <Icon>
-                      <bt:Image size="16" resid="Icon.16x16" />
-                      <bt:Image size="32" resid="Icon.16x16" />
-                      <bt:Image size="80" resid="Icon.16x16" />
-                    </Icon>
-                    <Action xsi:type="ShowTaskpane">
-                      <SourceLocation resid="Taskpane.Url"/>
-                    </Action>
-                  </Control>
-                </Group>
-              </OfficeTab>
-            </ExtensionPoint>
                     </DesktopFormFactor>
       </Host>
     </Hosts>
   <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html" />
-        <bt:Url id="WebViewRuntime.Url" DefaultValue="https://localhost:3000/commands.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/taskpane.html" />
+        <bt:Url id="WebViewRuntime.Url" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/commands.html" />
         <!-- Entry needed for classic Outlook on Windows. -->
-        <bt:Url id="JSRuntime.Url" DefaultValue="https://localhost:3000/launchevent.js" />
+        <bt:Url id="JSRuntime.Url" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/launchevent.js" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="AKMF Dodatek"/>
@@ -173,28 +151,6 @@
               </OfficeTab>
             </ExtensionPoint>
 
-            <ExtensionPoint xsi:type="AppointmentOrganizerCommandSurface">
-              <OfficeTab id="TabDefault">
-                <Group id="aocsG0">
-                  <Label resid="residGL0"/>
-                  <Control xsi:type="Button" id="MRCS_TpBtn1">
-                    <Label resid="residStr0"/>
-                    <Supertip>
-                      <Title resid="residStr0"/>
-                      <Description resid="residTT0"/>
-                    </Supertip>
-                    <Icon>
-                      <bt:Image size="16" resid="Icon.16x16" />
-                      <bt:Image size="32" resid="Icon.16x16" />
-                      <bt:Image size="80" resid="Icon.16x16" />
-                    </Icon>
-                    <Action xsi:type="ShowTaskpane">
-                      <SourceLocation resid="Taskpane.Url"/>
-                    </Action>
-                  </Control>
-                </Group>
-              </OfficeTab>
-            </ExtensionPoint>
 
          
 
@@ -204,7 +160,6 @@
           <ExtensionPoint xsi:type="LaunchEvent">
             <LaunchEvents>
               <LaunchEvent Type="OnNewMessageCompose" FunctionName="onNewMessageComposeHandler"/>
-              <LaunchEvent Type="OnNewAppointmentOrganizer" FunctionName="onNewAppointmentComposeHandler"/>
             </LaunchEvents>
             <!-- Identifies the runtime to be used (also referenced by the Runtime element). -->
             <SourceLocation resid="WebViewRuntime.Url"/>
@@ -214,15 +169,15 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:3000/assets/akmf_logo.png"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/assets/akmf_logo.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html" />
-        <bt:Url id="WebViewRuntime.Url" DefaultValue="https://localhost:3000/commands.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/taskpane.html" />
+        <bt:Url id="WebViewRuntime.Url" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/commands.html" />
         <!-- Entry needed for classic Outlook on Windows. -->
-        <bt:Url id="JSRuntime.Url" DefaultValue="https://localhost:3000/launchevent.js" />
+        <bt:Url id="JSRuntime.Url" DefaultValue="https://kurzyna.github.io/SignatureAuto/dist/launchevent.js" />
       </bt:Urls>
       <bt:ShortStrings>
     <bt:String id="GroupLabel" DefaultValue="AKMF Dodatek"/>
