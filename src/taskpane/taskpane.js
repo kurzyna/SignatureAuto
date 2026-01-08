@@ -30,6 +30,7 @@ const MSAL_CONFIG = {
 
 // NEW: helpers do szybkiego wstawiania/usuwania pozdrowienia w HTML (używane dla preview)
 function addGreetingToHtml(html) {
+  // spacer + pozdrowienie — zgodne z signature.js
   const greetingHtml = `<div style="font-family:'Poppins','Segoe UI',Arial,Helvetica,sans-serif; color:#000000 !important; font-size:12pt; margin-bottom:8px;">Pozdrawiam serdecznie,</div>`;
   try {
     // if signature container exists, insert before it

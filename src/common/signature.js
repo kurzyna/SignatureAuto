@@ -10,8 +10,9 @@ export function buildSignatureHtml(profile, options = {}) {
   } = profile || {};
 
   const addGreeting = !!options.addGreeting; // NEW
+  // spacer (jedna linia przerwy) + właściwe pozdrowienie
   const greetingHtml = addGreeting
-    ? `<div style="font-family:'Poppins','Segoe UI',Arial,Helvetica,sans-serif; color:#000000 !important; font-size:12pt; margin-bottom:8px;">Pozdrawiam serdecznie,</div>`
+    ? `<div style="height:10px; line-height:10px; font-size:0;">&nbsp;</div><div style="font-family:'Poppins','Segoe UI',Arial,Helvetica,sans-serif; color:#000000 !important; font-size:12pt; margin-bottom:8px;">Pozdrawiam serdecznie,</div>`
     : ""; // NEW
 
   let linkedin =
